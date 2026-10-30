@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- About page: removed the personal paragraph about the developer.
+
 - Step-by-step Greek guide for using Vast and the Claude Desktop extension: mcp/GUIDE.el.html.
 
 - Security hardening after an independent audit: no TLS fallback to workers, local API checks Host and compares the token in constant time (unauthenticated callers get an empty 404), file paths for images go through the same checks as other imports, editor bridge checks the origin, content security policy and a narrow asset scope for the window, node packs pinned to exact commits, imported model packs accept only .safetensors and .gguf, imported workflows cannot replace built-in modes.
