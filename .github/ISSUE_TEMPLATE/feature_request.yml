@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest a model, tool or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What do you want to do?
+      description: Describe the goal, not only the solution. For a model, add the link.
+    validations:
+      required: true
