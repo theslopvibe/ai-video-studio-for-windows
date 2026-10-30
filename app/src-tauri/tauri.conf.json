@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "nsis"
     ],
@@ -58,6 +59,13 @@
       "webviewInstallMode": {
         "type": "embedBootstrapper"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDMEY2RDU1NzkzNDU5MzYKUldRMldUUjVWVzBQekxDeTMwejA2RUdDeUwzZWJMNWRFY1p5dEljLzUvNmdtUlNzL0xmTWh3WHMK",
+      "endpoints": ["https://github.com/theslopvibe/ai-video-studio-for-windows/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   }
 }

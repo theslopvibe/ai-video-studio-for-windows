@@ -7,6 +7,24 @@
   import type { Theme } from "./store.svelte";
   import { ct } from "./chatStrings";
   import ModelSelect from "./ModelSelect.svelte";
+  import { check as checkUpdate } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
+
+  let upd = $state("");
+  let updBusy = $state(false);
+  async function updateApp() {
+    const el = S.lang === "el";
+    updBusy = true; upd = el ? "Έλεγχος…" : "Checking…";
+    try {
+      const u = await checkUpdate();
+      if (!u) { upd = el ? "Έχεις την τελευταία έκδοση." : "You are up to date."; return; }
+      if (!(await askDialog(el ? `Νέα έκδοση ${u.version}. Λήψη και εγκατάσταση τώρα; Τα δεδομένα σου μένουν.` : `Version ${u.version} is available. Download and install now? Your data stays.`, { kind: "info" }))) { upd = ""; return; }
+      upd = el ? "Λήψη…" : "Downloading…";
+      await u.downloadAndInstall();
+      await relaunch();
+    } catch (e) { upd = (el ? "Αποτυχία ενημέρωσης: " : "Update failed: ") + String(e); }
+    finally { updBusy = false; }
+  }
 
   const provKeys: { name: string; label: string; hosted?: string; help: string }[] = [
     { name: "fal_key", label: "fal.ai", hosted: "fal", help: "fal.ai → Dashboard → Keys" },
@@ -268,6 +286,10 @@
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}
       <a href="https://github.com/opencut-app/opencut-classic" target="_blank" rel="noreferrer">github.com/opencut-app/opencut-classic</a></p>
+    <div class="row">
+      <button onclick={updateApp} disabled={updBusy}>{S.lang === "el" ? "Έλεγχος για ενημέρωση" : "Check for updates"}</button>
+      {#if upd}<span class="small dim">{upd}</span>{/if}
+    </div>
     <div class="row">
       <a class="btn" href="https://ko-fi.com/slopvibe" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a>
       <a class="btn ghost" href="https://theslopvibe.com/free-apps" target="_blank" rel="noreferrer">{S.lang === "el" ? "Περισσότερες δωρεάν εφαρμογές" : "More free apps"}</a>
