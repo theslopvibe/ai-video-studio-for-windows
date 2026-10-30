@@ -1,6 +1,7 @@
-export type Lang = "el" | "en";
+import { loc, type Lang } from "./translations";
+export type { Lang };
 
-const D = {
+export const D = {
   nav_generate: { el: "Δημιουργία", en: "Generate" },
   nav_chat: { el: "Chat", en: "Chat" },
   nav_queue: { el: "Ουρά", en: "Queue" },
@@ -255,5 +256,6 @@ const D = {
 
 export type Key = keyof typeof D;
 export function tr(lang: Lang, key: Key): string {
-  return D[key][lang] ?? D[key].en;
+  const s = D[key] as Record<string, string>;
+  return lang === "el" || lang === "en" ? s[lang] ?? s.en : loc(lang, "d." + key, s.en);
 }

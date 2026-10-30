@@ -1,7 +1,8 @@
 import type { Lang } from "./i18n";
+import { loc } from "./translations";
 
 // English first. Greek is the second language.
-const W = {
+export const W = {
   title: { en: "Welcome to AI Video Studio For Windows", el: "Καλώς ήρθες στο AI Video Studio For Windows" },
   lead: {
     en: "Turn a text prompt or a picture into a video or an image, using open-source AI models. This quick setup gets everything ready, step by step. It takes a few minutes, and most of that is downloading.",
@@ -109,4 +110,4 @@ const W = {
 } as const;
 
 export type WKey = keyof typeof W;
-export const wt = (lang: Lang, k: WKey): string => W[k][lang] ?? W[k].en;
+export const wt = (lang: Lang, k: WKey): string => (lang === "el" || lang === "en" ? W[k][lang] ?? W[k].en : loc(lang, "w." + k, W[k].en));

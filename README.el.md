@@ -6,7 +6,7 @@ Windows εφαρμογή που φτιάχνει AI videos από prompt (ελλ
 
 Εγκατάσταση
 
-1. Τρέξε το `AI Video Studio For Windows_0.1.0_x64-setup.exe` (ανά χρήστη, **χωρίς admin**, ~3 MB).
+1. Τρέξε το `AI Video Studio For Windows_<version>_x64-setup.exe` (ανά χρήστη, **χωρίς admin**, ~3 MB).
 2. Αν τα Windows δείξουν «Windows protected your PC» (ο installer δεν έχει πληρωμένο certificate): **More info → Run anyway**.
 3. Το WebView2 που χρειάζεται η εφαρμογή **εγκαθίσταται αυτόματα** από τον installer αν λείπει.
 

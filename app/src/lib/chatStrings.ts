@@ -1,6 +1,7 @@
 import type { Lang } from "./i18n";
+import { loc } from "./translations";
 
-const C = {
+export const C = {
   new_chat: { en: "New chat", el: "Νέα συνομιλία" },
   new_folder: { en: "New folder", el: "Νέος φάκελος" },
   folder_name: { en: "Folder name", el: "Όνομα φακέλου" },
@@ -48,4 +49,4 @@ const C = {
 } as const;
 
 export type CKey = keyof typeof C;
-export const ct = (lang: Lang, k: CKey): string => C[k][lang] ?? C[k].en;
+export const ct = (lang: Lang, k: CKey): string => (lang === "el" || lang === "en" ? C[k][lang] ?? C[k].en : loc(lang, "c." + k, C[k].en));

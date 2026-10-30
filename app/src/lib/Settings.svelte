@@ -3,6 +3,7 @@
   import { api } from "./api";
   import { S } from "./store.svelte";
   import type { Lang } from "./i18n";
+  import { LANGS } from "./translations";
   import type { Theme } from "./store.svelte";
   import { ct } from "./chatStrings";
   import ModelSelect from "./ModelSelect.svelte";
@@ -109,8 +110,9 @@
   <div class="card">
     <h2>{S.t("language")}</h2>
     <div class="row">
-      <button class:primary={S.lang === "el"} onclick={() => setLang("el")}>Ελληνικά</button>
-      <button class:primary={S.lang === "en"} onclick={() => setLang("en")}>English</button>
+      {#each LANGS as l}
+        <button class:primary={S.lang === l.code} onclick={() => setLang(l.code)}>{l.name}</button>
+      {/each}
     </div>
     <h2 style="margin-top:14px">{S.t("theme")}</h2>
     <div class="row">
@@ -252,7 +254,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.1.0" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.2.0" : ""}</p>
     <p>{S.lang === "el"
       ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
       : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>

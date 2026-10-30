@@ -1,6 +1,7 @@
 <script lang="ts">
   import { S } from "./store.svelte";
   import { GUIDE } from "./guide";
+  import { loc } from "./translations";
 
   let open = $state("start");
   const go = (page: "generate" | "models" | "settings" | "gpu") => (S.page = page);
@@ -11,7 +12,8 @@
   <p class="dim">{S.t("guide_intro")}</p>
 
   {#each GUIDE as g}
-    {@const c = S.lang === "el" ? g.el : g.en}
+    {@const base = S.lang === "el" ? g.el : g.en}
+    {@const c = S.lang === "el" || S.lang === "en" ? base : { t: loc(S.lang, `g.${g.id}.t`, base.t), steps: base.steps.map((s, i) => loc(S.lang, `g.${g.id}.s${i}`, s)), note: base.note ? loc(S.lang, `g.${g.id}.note`, base.note) : undefined }}
     <div class="card">
       <button class="ghost" style="width:100%;text-align:left;font-size:15px" onclick={() => (open = open === g.id ? "" : g.id)}>
         <b>{open === g.id ? "▾" : "▸"} {g.icon}. {c.t}</b>
