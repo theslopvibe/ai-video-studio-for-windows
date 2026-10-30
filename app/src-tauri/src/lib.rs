@@ -706,8 +706,8 @@ fn chat_list(st: State<AppState>, query: String) -> R<Vec<chat::Chat>> {
     chat::chats(&st.db, &query)
 }
 #[tauri::command]
-fn chat_new(st: State<AppState>, folder_id: String, provider: String, model: String) -> R<chat::Chat> {
-    chat::chat_create(&st.db, &folder_id, &provider, &model)
+fn chat_new(st: State<AppState>, folder_id: String, provider: String, model: String, mode: String) -> R<chat::Chat> {
+    chat::chat_create(&st.db, &folder_id, &provider, &model, &mode)
 }
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]

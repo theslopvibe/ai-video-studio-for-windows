@@ -10,7 +10,7 @@ use std::time::Duration;
 pub struct Preset {
     pub id: &'static str,
     pub label: &'static str,
-    /// openai | gemini | anthropic | cli
+    /// openai | gemini | anthropic | cli (for cli, `base` is the program: claude | codex | gemini)
     pub kind: &'static str,
     pub base: &'static str,
     pub secret: &'static str,
@@ -20,11 +20,14 @@ pub struct Preset {
 }
 
 pub const PRESETS: &[Preset] = &[
-    Preset { id: "claude_sub", label: "Claude (subscription via Claude Code)", kind: "cli", base: "", secret: "", model: "sonnet", models: &["haiku", "sonnet", "opus"] },
+    Preset { id: "claude_sub", label: "Claude (subscription via Claude Code)", kind: "cli", base: "claude", secret: "", model: "sonnet", models: &["haiku", "sonnet", "opus"] },
+    Preset { id: "chatgpt_sub", label: "ChatGPT (subscription via Codex CLI)", kind: "cli", base: "codex", secret: "", model: "", models: &["gpt-5", "gpt-5-codex"] },
+    Preset { id: "gemini_sub", label: "Gemini (subscription via Gemini CLI)", kind: "cli", base: "gemini", secret: "", model: "", models: &["gemini-2.5-pro", "gemini-2.5-flash"] },
     Preset { id: "anthropic", label: "Claude (API key)", kind: "anthropic", base: "", secret: "anthropic_api_key", model: "claude-sonnet-5-5", models: &["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
     Preset { id: "openai", label: "OpenAI GPT", kind: "openai", base: "https://api.openai.com/v1", secret: "openai_api_key", model: "gpt-4o-mini", models: &["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini"] },
     Preset { id: "gemini", label: "Google Gemini", kind: "gemini", base: "", secret: "gemini_api_key", model: "gemini-2.5-flash", models: &["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"] },
     Preset { id: "glm", label: "Z.ai GLM", kind: "openai", base: "https://api.z.ai/api/paas/v4", secret: "glm_api_key", model: "glm-4.6", models: &["glm-4.6", "glm-4.5", "glm-4.5-air"] },
+    Preset { id: "glm_plan", label: "Z.ai GLM Coding Plan (subscription key)", kind: "openai", base: "https://api.z.ai/api/coding/paas/v4", secret: "glm_api_key", model: "glm-4.6", models: &["glm-4.6", "glm-4.5", "glm-4.5-air"] },
     Preset { id: "deepseek", label: "DeepSeek", kind: "openai", base: "https://api.deepseek.com", secret: "deepseek_api_key", model: "deepseek-chat", models: &["deepseek-chat", "deepseek-reasoner"] },
     Preset { id: "openrouter", label: "OpenRouter (many models)", kind: "openai", base: "https://openrouter.ai/api/v1", secret: "openrouter_api_key", model: "openai/gpt-4o-mini", models: &["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash", "deepseek/deepseek-chat", "z-ai/glm-4.6"] },
     Preset { id: "ollama", label: "Ollama (local, free)", kind: "openai", base: "http://localhost:11434/v1", secret: "", model: "llama3.2", models: &["llama3.2", "qwen2.5", "mistral"] },
@@ -43,7 +46,10 @@ pub fn init(db: &Db) -> rusqlite::Result<()> {
          CREATE TABLE IF NOT EXISTS chat_messages(id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, role TEXT NOT NULL,
            content TEXT NOT NULL, created_at INTEGER NOT NULL);
          CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat_id, created_at);",
-    )
+    )?;
+    // older databases have no `mode`; the error for "duplicate column" is expected and ignored
+    let _ = db.0.lock().unwrap().execute("ALTER TABLE chats ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'", []);
+    Ok(())
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -63,6 +69,8 @@ pub struct Chat {
     pub pinned: bool,
     pub created_at: i64,
     pub updated_at: i64,
+    /// "chat" | "studio" (studio chats can queue videos and images)
+    pub mode: String,
     /// the matching line when the list comes from a search
     pub snippet: String,
 }
@@ -136,7 +144,11 @@ pub async fn list_models(st: &AppState, provider: &str) -> Vec<String> {
 pub fn providers() -> Vec<ProviderInfo> {
     PRESETS
         .iter()
-        .map(|p| ProviderInfo { id: p.id, label: p.label, model: p.model, needs_key: !p.secret.is_empty(), has_key: p.secret.is_empty() || secrets::get(p.secret).is_some() })
+        .map(|p| ProviderInfo {
+            id: p.id, label: p.label, model: p.model,
+            needs_key: !p.secret.is_empty() || p.kind == "cli",
+            has_key: if p.kind == "cli" { locate_cli(p.base).is_some() } else { p.secret.is_empty() || secrets::get(p.secret).is_some() },
+        })
         .collect()
 }
 
@@ -147,10 +159,10 @@ fn uid() -> String {
 fn chat_row(r: &rusqlite::Row) -> rusqlite::Result<Chat> {
     Ok(Chat {
         id: r.get(0)?, folder_id: r.get(1)?, title: r.get(2)?, provider: r.get(3)?, model: r.get(4)?, system: r.get(5)?,
-        pinned: r.get::<_, i64>(6)? != 0, created_at: r.get(7)?, updated_at: r.get(8)?, snippet: String::new(),
+        pinned: r.get::<_, i64>(6)? != 0, created_at: r.get(7)?, updated_at: r.get(8)?, mode: r.get(9)?, snippet: String::new(),
     })
 }
-const CHAT_COLS: &str = "id,folder_id,title,provider,model,system,pinned,created_at,updated_at";
+const CHAT_COLS: &str = "id,folder_id,title,provider,model,system,pinned,created_at,updated_at,mode";
 
 pub fn folders(db: &Db) -> Result<Vec<Folder>, String> {
     let c = db.0.lock().unwrap();
@@ -223,13 +235,14 @@ pub fn snippet(text: &str, q: &str) -> String {
     format!("{}{}{}", if start > 0 { "…" } else { "" }, s.trim(), if end < chars.len() { "…" } else { "" })
 }
 
-pub fn chat_create(db: &Db, folder_id: &str, provider: &str, model: &str) -> Result<Chat, String> {
+pub fn chat_create(db: &Db, folder_id: &str, provider: &str, model: &str, mode: &str) -> Result<Chat, String> {
     let p = preset(provider).ok_or_else(|| format!("Unknown provider {provider}"))?;
     let id = uid();
     let t = now();
     let model = if model.trim().is_empty() { p.model } else { model.trim() };
+    let mode = if mode == "studio" { "studio" } else { "chat" };
     db.0.lock().unwrap()
-        .execute("INSERT INTO chats(id,folder_id,title,provider,model,system,pinned,created_at,updated_at) VALUES(?1,?2,'New chat',?3,?4,'',0,?5,?5)", params![id, folder_id, provider, model, t])
+        .execute("INSERT INTO chats(id,folder_id,title,provider,model,system,pinned,created_at,updated_at,mode) VALUES(?1,?2,'New chat',?3,?4,'',0,?5,?5,?6)", params![id, folder_id, provider, model, t, mode])
         .map_err(|e| e.to_string())?;
     chat(db, &id).ok_or_else(|| "chat not created".into())
 }
@@ -287,7 +300,9 @@ pub async fn send(st: &AppState, chat_id: &str, text: &str) -> Result<Vec<Messag
         st.db.0.lock().unwrap().execute("UPDATE chats SET title=?2 WHERE id=?1", params![chat_id, t.replace('\n', " ")]).map_err(|e| e.to_string())?;
     }
     let history: Vec<(String, String)> = messages(&st.db, chat_id)?.into_iter().map(|m| (m.role, m.content)).collect();
-    let reply = complete(st, &ch.provider, &ch.model, &ch.system, &history).await?;
+    let system = if ch.mode == "studio" { format!("{}
+{}", studio_system(st), ch.system) } else { ch.system.clone() };
+    let reply = complete(st, &ch.provider, &ch.model, &system, &history).await?;
     add_message(&st.db, chat_id, "assistant", &reply)?;
     messages(&st.db, chat_id)
 }
@@ -368,13 +383,105 @@ pub async fn complete(st: &AppState, provider: &str, model: &str, system: &str, 
         "cli" => {
             let transcript = cli_transcript(history);
             let sys = if system.trim().is_empty() { "You are a helpful assistant in a chat window. Answer the last user message." } else { system };
-            crate::anthropic::run_cli(sys, &transcript, model).await.map(|o| o.text)
+            run_cli(p.base, sys, &transcript, model).await
         }
         other => Err(format!("Unsupported provider kind {other}")),
     }
 }
 
-/// The Claude CLI takes one prompt, so the conversation is flattened into a transcript.
+
+/// Finds a subscription CLI (`claude`, `codex`, `gemini`): PATH first, then the usual npm and install folders.
+pub fn locate_cli(name: &str) -> Option<std::path::PathBuf> {
+    if name == "claude" {
+        return crate::anthropic::locate_cli();
+    }
+    let mut dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    if let Some(a) = std::env::var_os("APPDATA") {
+        dirs.push(std::path::PathBuf::from(a).join("npm"));
+    }
+    if let Some(h) = std::env::var_os("USERPROFILE") {
+        dirs.push(std::path::PathBuf::from(h).join(".local").join("bin"));
+    }
+    dirs.into_iter().flat_map(|d| [d.join(format!("{name}.exe")), d.join(format!("{name}.cmd"))]).find(|p| p.is_file())
+}
+
+/// One answer from a subscription CLI. Claude keeps its own system-prompt flag; Codex and Gemini get the
+/// instructions at the top of the prompt, which they read from stdin.
+async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<String, String> {
+    use tokio::io::AsyncWriteExt;
+    if tool == "claude" {
+        return crate::anthropic::run_cli(system, input, model).await.map(|o| o.text);
+    }
+    let exe = locate_cli(tool).ok_or_else(|| match tool {
+        "codex" => "Codex CLI not found. Install it (npm i -g @openai/codex), run `codex` once and sign in with your ChatGPT account.".to_string(),
+        _ => "Gemini CLI not found. Install it (npm i -g @google/gemini-cli), run `gemini` once and sign in with your Google account.".to_string(),
+    })?;
+    let prompt = format!("{system}
+
+---
+
+{input}");
+    let out_file = std::env::temp_dir().join(format!("avs-{}.txt", uuid::Uuid::new_v4().simple()));
+    let mut cmd = tokio::process::Command::new(exe);
+    if tool == "codex" {
+        cmd.args(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-last-message"]).arg(&out_file);
+        if !model.trim().is_empty() {
+            cmd.args(["-m", model.trim()]);
+        }
+        cmd.arg("-");
+    } else {
+        cmd.args(["-p", "Answer the request given on stdin."]);
+        if !model.trim().is_empty() {
+            cmd.args(["-m", model.trim()]);
+        }
+    }
+    cmd.current_dir(std::env::temp_dir()).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let mut child = cmd.spawn().map_err(|e| format!("{tool}: {e}"))?;
+    let mut stdin = child.stdin.take().ok_or("stdin")?;
+    stdin.write_all(prompt.as_bytes()).await.map_err(|e| e.to_string())?;
+    drop(stdin);
+    let out = tokio::time::timeout(Duration::from_secs(180), child.wait_with_output()).await.map_err(|_| format!("{tool}: timeout (180s)"))?.map_err(|e| e.to_string())?;
+    let text = if tool == "codex" { std::fs::read_to_string(&out_file).unwrap_or_default() } else { String::from_utf8_lossy(&out.stdout).into_owned() };
+    let _ = std::fs::remove_file(&out_file);
+    let text = text.trim().to_string();
+    if !out.status.success() || text.is_empty() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = if err.trim().is_empty() { text } else { err.trim().to_string() };
+        return Err(format!("{tool}: {}", msg.chars().take(300).collect::<String>()));
+    }
+    Ok(text)
+}
+
+/// Instructions for "Create video with chat". The catalogue is inlined so the model needs no tool calls and
+/// the same text works for APIs and subscription CLIs.
+pub fn studio_system(st: &AppState) -> String {
+    let (wfs, _) = st.load_workflows();
+    let mut cat = String::new();
+    for w in wfs.iter().filter(|w| matches!(w.meta.kind.as_str(), "t2v" | "t2i")) {
+        let m = &w.meta;
+        let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image")).collect();
+        let cost = if m.provider.is_empty() { format!("open source, ~{}s on a GPU", m.est_sec) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
+        cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {}
+", m.id, m.name_en, m.kind, cost, m.good_en, keys.join(",")));
+    }
+    format!(
+        "You are the assistant inside AI Video Studio, an app that makes videos and images from prompts. Reply in the user's language, briefly. Ask at most one short question and only if essential. Recommend a model for the task (one line: why, speed, price). Write the prompt in English: subject, one action, setting, light, camera, style, one continuous shot.
+To queue a result add one block per clip, exactly:
+```video
+{{\"workflow\":\"<id>\",\"prompt\":\"<English prompt>\",\"params\":{{}}}}
+```
+The app shows the user a card with the price and a Generate button, so never say it is already generating. Use only ids from the list; put only keys from that model's params in \"params\" (e.g. width, height, length, fps) and leave it empty when unsure. For several scenes write several blocks in order. Image-to-video needs a start image: tell the user to use the Generate page for that.
+Default run mode: {}.
+Models (id | name | kind | cost | use | params):
+{}",
+        st.db.kv_get("provider").unwrap_or_else(|| "vast".into()),
+        cat
+    )
+}
+
+/// The CLIs take one prompt, so the conversation is flattened into a transcript.
 pub fn cli_transcript(history: &[(String, String)]) -> String {
     if history.len() == 1 {
         return history[0].1.clone();
@@ -405,8 +512,8 @@ mod tests {
         let d = db();
         folder_create(&d, "Ideas").unwrap();
         let f = folders(&d).unwrap().remove(0);
-        let a = chat_create(&d, &f.id, "openai", "").unwrap();
-        let b = chat_create(&d, "", "glm", "glm-4.6").unwrap();
+        let a = chat_create(&d, &f.id, "openai", "", "chat").unwrap();
+        let b = chat_create(&d, "", "glm", "glm-4.6", "chat").unwrap();
         assert_eq!(a.model, "gpt-4o-mini");
         add_message(&d, &a.id, "user", "Write a poem about foxes in the snow").unwrap();
         add_message(&d, &b.id, "user", "100% sure? use_underscore").unwrap();
@@ -428,8 +535,8 @@ mod tests {
     #[test]
     fn pinned_chats_come_first() {
         let d = db();
-        let a = chat_create(&d, "", "openai", "").unwrap();
-        let b = chat_create(&d, "", "openai", "").unwrap();
+        let a = chat_create(&d, "", "openai", "", "chat").unwrap();
+        let b = chat_create(&d, "", "openai", "", "chat").unwrap();
         chat_update(&d, &a.id, "Old but pinned", "", "openai", "", "", true).unwrap();
         d.0.lock().unwrap().execute("UPDATE chats SET updated_at=updated_at+100 WHERE id=?1", params![b.id]).unwrap();
         assert_eq!(chats(&d, "").unwrap()[0].id, a.id);
@@ -444,11 +551,21 @@ mod tests {
     }
 
     #[test]
+    fn studio_chats_keep_their_mode() {
+        let d = db();
+        assert_eq!(chat_create(&d, "", "openai", "", "studio").unwrap().mode, "studio");
+        assert_eq!(chat_create(&d, "", "openai", "", "whatever").unwrap().mode, "chat");
+    }
+
+    #[test]
     fn presets_are_consistent() {
         for p in PRESETS {
-            assert!(!p.model.is_empty(), "{}", p.id);
+            assert!(!p.model.is_empty() || p.kind == "cli", "{}", p.id);
             if p.kind == "openai" {
                 assert!(p.base.starts_with("http"), "{}", p.id);
+            }
+            if p.kind == "cli" {
+                assert!(matches!(p.base, "claude" | "codex" | "gemini"), "{}", p.id);
             }
         }
         assert!(preset("glm").is_some() && preset("nope").is_none());

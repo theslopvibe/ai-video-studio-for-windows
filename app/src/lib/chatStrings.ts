@@ -35,6 +35,15 @@ const C = {
   custom_model: { en: "Custom…", el: "Άλλο…" },
   you: { en: "You", el: "Εσύ" },
   assistant: { en: "Assistant", el: "Βοηθός" },
+  new_studio: { en: "Create video with chat", el: "Δημιουργία video με chat" },
+  studio_empty: { en: "Describe the video or image you want. I will suggest a model, write the prompt and show a card with the price. Nothing is generated until you press Generate.", el: "Περιέγραψε το video ή την εικόνα που θέλεις. Θα προτείνω μοντέλο, θα γράψω το prompt και θα δείξω κάρτα με την τιμή. Τίποτα δεν παράγεται μέχρι να πατήσεις Δημιουργία." },
+  studio_placeholder: { en: "e.g. A 5 second video of a fox in the snow, cheapest option", el: "π.χ. Video 5 δευτερολέπτων με μια αλεπού στο χιόνι, η φθηνότερη επιλογή" },
+  gen_now: { en: "Generate", el: "Δημιουργία" },
+  edit_in_gen: { en: "Edit in Generate", el: "Επεξεργασία στη Δημιουργία" },
+  queued_card: { en: "Queued. See the Queue page.", el: "Μπήκε στην ουρά. Δες τη σελίδα Ουρά." },
+  est: { en: "Estimated", el: "Εκτίμηση" },
+  bad_model: { en: "The assistant named a model this app does not have:", el: "Ο βοηθός ανέφερε μοντέλο που δεν υπάρχει στην εφαρμογή:" },
+  need_cli: { en: "This subscription needs its command-line tool installed and signed in (see the Guide).", el: "Η συνδρομή θέλει το εργαλείο γραμμής εντολών εγκατεστημένο και συνδεδεμένο (δες τις Οδηγίες)." },
   prompt_sent: { en: "Prompt copied to Generate.", el: "Το prompt πέρασε στη Δημιουργία." },
 } as const;
 

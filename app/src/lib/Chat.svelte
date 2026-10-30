@@ -21,6 +21,34 @@
   let showSettings = $state(false);
   let box: HTMLDivElement | undefined = $state();
 
+  // "Create video with chat": the assistant adds ```video {...}``` blocks; each becomes a card the user confirms.
+  type Card = { workflow: string; prompt: string; params: Record<string, unknown> };
+  let done = $state<Record<string, boolean>>({});
+  function parse(content: string): { text: string; cards: Card[] } {
+    const cards: Card[] = [];
+    const text = content.replace(/```video\s*([\s\S]*?)```/g, (whole, body: string) => {
+      try {
+        const v = JSON.parse(body.trim());
+        for (const c of Array.isArray(v) ? v : [v]) if (c && typeof c.workflow === "string" && typeof c.prompt === "string") cards.push({ workflow: c.workflow, prompt: c.prompt, params: c.params && typeof c.params === "object" ? c.params : {} });
+      } catch { return whole; } // a broken block stays visible as plain text
+      return "";
+    }).trim();
+    return { text, cards };
+  }
+  const wfOf = (id: string) => S.workflows.find((w) => w.meta.id === id);
+  const wfName = (id: string) => { const w = wfOf(id); return w ? (S.lang === "el" ? w.meta.name_el : w.meta.name_en) : id; };
+  function estimate(id: string) {
+    const w = wfOf(id);
+    if (!w) return 0;
+    return w.meta.provider ? (w.meta.est_usd ?? 0) : S.dph > 0 ? (w.meta.est_sec * S.dph) / 3600 : 0;
+  }
+  async function generate(key: string, c: Card) {
+    if (!wfOf(c.workflow)) return S.notify(t("bad_model") + " " + c.workflow, true);
+    const j = await S.run(() => api.enqueue(S.projectId, c.workflow, c.prompt, c.params));
+    if (j) { S.upsert(j); done[key] = true; S.notify(t("queued_card")); }
+  }
+  function editInGenerate(c: Card) { S.draft = { prompt: c.prompt, workflow: c.workflow }; S.page = "generate"; }
+
   const open = $derived(chats.find((c) => c.id === openId));
   const prov = $derived(providers.find((p) => p.id === open?.provider));
   const shown = $derived(query.trim() || folderFilter === "all" ? chats : chats.filter((c) => c.folder_id === folderFilter));
@@ -45,9 +73,9 @@
   }
   async function scroll() { await tick(); box?.scrollTo({ top: box.scrollHeight }); }
 
-  async function newChat() {
+  async function newChat(mode: "chat" | "studio" = "chat") {
     const last = S.settings.chat_provider || providers.find((p) => p.has_key)?.id || "claude_sub";
-    const c = await S.run(() => api.chatNew(folderFilter !== "all" ? folderFilter : "", last, S.settings["chat_model_" + last] ?? ""));
+    const c = await S.run(() => api.chatNew(folderFilter !== "all" ? folderFilter : "", last, S.settings["chat_model_" + last] ?? "", mode));
     if (!c) return;
     query = ""; await reload(); await select(c.id);
   }
@@ -105,7 +133,10 @@
 <div class="chat">
   <aside>
     <div class="row top">
-      <button class="primary grow" onclick={newChat}>＋ {t("new_chat")}</button>
+      <button class="primary grow" onclick={() => newChat("studio")}>🎬 {t("new_studio")}</button>
+    </div>
+    <div class="row top">
+      <button class="grow" onclick={() => newChat("chat")}>＋ {t("new_chat")}</button>
     </div>
     <input class="srch" placeholder={t("search")} bind:value={query} oninput={onSearch} />
     <div class="folders">
@@ -123,7 +154,7 @@
     <div class="list">
       {#each shown as c (c.id)}
         <button class="item" class:on={c.id === openId} onclick={() => select(c.id)}>
-          <span class="ttl">{c.pinned ? "📌 " : ""}{c.title}</span>
+          <span class="ttl">{c.pinned ? "📌 " : ""}{c.mode === "studio" ? "🎬 " : ""}{c.title}</span>
           {#if c.snippet}<span class="snip">{c.snippet}</span>{/if}
         </button>
       {/each}
@@ -154,15 +185,31 @@
           </div>
         </div>
       {/if}
-      {#if prov && !prov.has_key}<div class="msg warn">{t("need_key")}</div>{/if}
+      {#if prov && !prov.has_key}<div class="msg warn">{prov.id.endsWith("_sub") ? t("need_cli") : t("need_key")}</div>{/if}
 
       <div class="msgs" bind:this={box}>
-        {#if !messages.length}<p class="dim empty">{t("empty")}</p>{/if}
+        {#if !messages.length}<p class="dim empty">{open.mode === "studio" ? t("studio_empty") : t("empty")}</p>{/if}
         {#each messages as m (m.id)}
+            {@const p = m.role === "assistant" && open.mode === "studio" ? parse(m.content) : { text: m.content, cards: [] as Card[] }}
           <div class="m {m.role}">
             <div class="who small dim">{m.role === "user" ? t("you") : t("assistant")}</div>
-            <div class="body">{m.content}</div>
-            {#if m.role === "assistant"}
+            {#if p.text}<div class="body">{p.text}</div>{/if}
+            {#each p.cards as c, i}
+              {@const k = m.id + ":" + i}
+              <div class="card vcard">
+                <div class="row"><b class="grow">{wfName(c.workflow)}</b>{#if estimate(c.workflow) > 0}<span class="small dim">{t("est")} ~${estimate(c.workflow).toFixed(2)}</span>{/if}</div>
+                <p class="vprompt">{c.prompt}</p>
+                {#if Object.keys(c.params).length}<p class="small dim">{Object.entries(c.params).map(([a, b]) => `${a}: ${b}`).join(" · ")}</p>{/if}
+                <div class="row">
+                  {#if done[k]}<span class="small">✓ {t("queued_card")}</span>
+                  {:else}
+                    <button class="primary" onclick={() => generate(k, c)}>▶ {t("gen_now")}</button>
+                    <button class="ghost" onclick={() => editInGenerate(c)}>{t("edit_in_gen")}</button>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+            {#if m.role === "assistant" && open.mode !== "studio"}
               <div class="acts">
                 <button class="ghost small" onclick={() => copy(m.content)}>{t("copy")}</button>
                 <button class="ghost small" onclick={() => toGenerate(m.content)}>✦ {t("to_generate")}</button>
@@ -174,7 +221,7 @@
       </div>
       {#if err}<div class="msg err">{err}</div>{/if}
       <div class="composer row">
-        <textarea rows="2" bind:value={text} placeholder={t("placeholder")} onkeydown={key}></textarea>
+        <textarea rows="2" bind:value={text} placeholder={open.mode === "studio" ? t("studio_placeholder") : t("placeholder")} onkeydown={key}></textarea>
         <button class="primary" disabled={sending || !text.trim()} onclick={send}>{t("send")}</button>
       </div>
     {:else}
@@ -202,6 +249,7 @@
   .msgs { flex: 1; overflow-y: auto; padding: 14px 4px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .m { max-width: 820px; } .m.user { align-self: flex-end; } .m.user .body { background: var(--sel); }
   .body { white-space: pre-wrap; word-break: break-word; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 13px; line-height: 1.5; }
+  .vcard { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; } .vprompt { margin: 0; white-space: pre-wrap; }
   .acts { display: flex; gap: 4px; margin-top: 2px; }
   .composer { align-items: flex-end; padding-top: 8px; } .composer textarea { resize: none; }
   .empty { padding: 30px; max-width: 46ch; }

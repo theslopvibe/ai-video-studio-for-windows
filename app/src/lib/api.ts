@@ -57,7 +57,7 @@ export type SetupProgress = { step: string; pct: number; detail: string };
 
 export type ChatProvider = { id: string; label: string; model: string; needs_key: boolean; has_key: boolean };
 export type ChatFolder = { id: string; name: string };
-export type Chat = { id: string; folder_id: string; title: string; provider: string; model: string; system: string; pinned: boolean; created_at: number; updated_at: number; snippet: string };
+export type Chat = { id: string; folder_id: string; title: string; provider: string; model: string; system: string; pinned: boolean; created_at: number; updated_at: number; mode: "chat" | "studio"; snippet: string };
 export type ChatMessage = { id: string; role: "user" | "assistant"; content: string; created_at: number };
 
 export const api = {
@@ -69,7 +69,7 @@ export const api = {
   chatFolderRename: (id: string, name: string) => invoke<ChatFolder[]>("chat_folder_rename", { id, name }),
   chatFolderDelete: (id: string) => invoke<ChatFolder[]>("chat_folder_delete", { id }),
   chatList: (query: string) => invoke<Chat[]>("chat_list", { query }),
-  chatNew: (folderId: string, provider: string, model: string) => invoke<Chat>("chat_new", { folderId, provider, model }),
+  chatNew: (folderId: string, provider: string, model: string, mode: "chat" | "studio" = "chat") => invoke<Chat>("chat_new", { folderId, provider, model, mode }),
   chatUpdate: (c: Chat) => invoke<void>("chat_update", { id: c.id, title: c.title, folderId: c.folder_id, provider: c.provider, model: c.model, system: c.system, pinned: c.pinned }),
   chatDelete: (id: string) => invoke<void>("chat_delete", { id }),
   chatMessages: (id: string) => invoke<ChatMessage[]>("chat_messages", { id }),
