@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Claude Desktop connection switch now works immediately (no app restart). The extension gives clear step-by-step messages in Greek when the app is closed or the connection is off.
+
 - New tools: subtitles from speech (Whisper, 99 languages, .srt/.vtt, shown in the Library), cut out or erase an object by clicking on it (SAM2 + LaMa), restore faces (GFPGAN), colorize black and white photos (DDColor), depth map (Depth Anything 3), picture to 3D model (TRELLIS.2, .glb). The image editor's AI menu has the picture tools. All are untested on real hardware yet.
 - Packs can install pinned pip packages (`pip`, `pip_nodeps`), and the helper node file gained speech-to-subtitles, LaMa erase, face restore and point helpers.
 
@@ -38,6 +40,8 @@
 - First version: Vast.ai Serverless with Wan 2.2, queue, library, projects, image to video, models from Hugging Face, logs and reports.
 
 ## Unreleased
+
+- The Claude Desktop connection switch now works immediately (no app restart). The extension gives clear step-by-step messages in Greek when the app is closed or the connection is off.
 
 - Security hardening after an independent audit: no TLS fallback to workers, local API checks Host and compares the token in constant time (unauthenticated callers get an empty 404), file paths for images go through the same checks as other imports, editor bridge checks the origin, content security policy and a narrow asset scope for the window, node packs pinned to exact commits, imported model packs accept only .safetensors and .gguf, imported workflows cannot replace built-in modes.
 

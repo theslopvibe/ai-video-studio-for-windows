@@ -2,12 +2,37 @@
 //! Bearer token + port are written to `<data dir>/api.json`; the MCP reads that file.
 use crate::{db, gpu_offers, job_cancel, job_enqueue, job_retry, logs_report, secrets, AppState};
 use serde_json::{json, Map, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 const PREFERRED_PORT: u16 = 47615;
+
+static ENABLED: AtomicBool = AtomicBool::new(false);
+static RUNNING: AtomicBool = AtomicBool::new(false);
+/// (path, text) of api.json while the API is on, so it can be switched off and on again without a restart.
+static INFO: Mutex<Option<(std::path::PathBuf, String)>> = Mutex::new(None);
+
+/// Turns the local API on or off right away (the Settings switch). Off: nothing is answered and the token file is removed.
+pub fn set_enabled(app: &AppHandle, on: bool) {
+    ENABLED.store(on, Ordering::SeqCst);
+    let info = INFO.lock().ok().and_then(|g| g.clone());
+    if on {
+        if let Some((path, text)) = info {
+            let _ = std::fs::write(path, text);
+        }
+        if !RUNNING.swap(true, Ordering::SeqCst) {
+            tauri::async_runtime::spawn(serve(app.clone()));
+        }
+    } else if let Some((path, _)) = info {
+        let _ = std::fs::remove_file(path);
+    } else if let Ok(d) = app.path().app_data_dir() {
+        let _ = std::fs::remove_file(d.join("api.json"));
+    }
+}
 const MAX_BODY: usize = 24 * 1024 * 1024;
 
 pub async fn serve(app: AppHandle) {
@@ -32,12 +57,21 @@ pub async fn serve(app: AppHandle) {
     };
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(PREFERRED_PORT);
     let info = json!({ "port": port, "token": token, "version": env!("CARGO_PKG_VERSION") });
-    if let Err(x) = std::fs::write(st.data_dir.join("api.json"), info.to_string()) {
-        crate::log::error(&format!("api: cannot write api.json: {x}"));
+    let info_path = st.data_dir.join("api.json");
+    if let Ok(mut g) = INFO.lock() {
+        *g = Some((info_path.clone(), info.to_string()));
+    }
+    if ENABLED.load(Ordering::SeqCst) {
+        if let Err(x) = std::fs::write(&info_path, info.to_string()) {
+            crate::log::error(&format!("api: cannot write api.json: {x}"));
+        }
     }
     crate::log::info(&format!("api: listening on 127.0.0.1:{port}"));
     loop {
         let Ok((sock, _)) = listener.accept().await else { continue };
+        if !ENABLED.load(Ordering::SeqCst) {
+            continue; // switched off: the connection is dropped without an answer
+        }
         let app = app.clone();
         let token = token.clone();
         tauri::async_runtime::spawn(async move {

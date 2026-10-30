@@ -246,6 +246,9 @@ fn setting_set(st: State<AppState>, app: AppHandle, key: String, value: String) 
     if key == "out_dir" {
         st.sync_asset_scope(&app);
     }
+    if key == "api_enabled" {
+        api::set_enabled(&app, value == "1");
+    }
     Ok(())
 }
 
@@ -1000,7 +1003,7 @@ pub fn run() {
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
             // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
             if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {
-                tauri::async_runtime::spawn(api::serve(h.clone()));
+                api::set_enabled(&h, true);
             } else {
                 let _ = std::fs::remove_file(app.state::<AppState>().data_dir.join("api.json"));
             }

@@ -23,7 +23,7 @@ function apiInfo() {
   try {
     return JSON.parse(fs.readFileSync(f, "utf8"));
   } catch {
-    throw new Error("Το AI Video Studio For Windows δεν έχει τρέξει ακόμα σε αυτό τον υπολογιστή. Εγκατάστησέ το και άνοιξέ το μία φορά.");
+    throw new Error("Δεν βρέθηκε σύνδεση με το AI Video Studio For Windows (είτε το πρόγραμμα είναι κλειστό, είτε η σύνδεση με το Claude Desktop είναι απενεργοποιημένη στις Ρυθμίσεις του). Πες στον χρήστη να κάνει ΜΕ ΤΗ ΣΕΙΡΑ: 1) να ανοίξει το πρόγραμμα «AI Video Studio For Windows» και να το αφήσει ανοιχτό, 2) στο πρόγραμμα: Ρυθμίσεις (Settings) → κουτί «Claude Desktop connection» → να τσεκάρει το «Allow the Claude Desktop connection», 3) να ξαναζητήσει το ίδιο από εδώ. Αν έχει παλιά έκδοση του προγράμματος (πριν την 0.5.0), πρέπει πρώτα να εγκαταστήσει τη νέα.");
   }
 }
 
@@ -37,11 +37,12 @@ async function call(method, route, body) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error("Το AI Video Studio For Windows δεν τρέχει. Πες στον χρήστη να ανοίξει την εφαρμογή «AI Video Studio For Windows» και ξαναδοκίμασε.");
+    throw new Error("Το AI Video Studio For Windows δεν απαντά (κλειστό ή με απενεργοποιημένη σύνδεση). Πες στον χρήστη να κάνει ΜΕ ΤΗ ΣΕΙΡΑ: 1) να ανοίξει το πρόγραμμα «AI Video Studio For Windows» και να το αφήσει ανοιχτό, 2) στο πρόγραμμα: Ρυθμίσεις (Settings) → κουτί «Claude Desktop connection» → να τσεκάρει το «Allow the Claude Desktop connection», 3) να ξαναζητήσει το ίδιο από εδώ. Αν έχει παλιά έκδοση του προγράμματος (πριν την 0.5.0), πρέπει πρώτα να εγκαταστήσει τη νέα.");
   }
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { error: text }; }
+  if (res.status === 404) throw new Error("Το πρόγραμμα απέρριψε το αίτημα (παλιός κωδικός σύνδεσης). Πες στον χρήστη να κλείσει εντελώς και να ανοίξει ξανά το AI Video Studio For Windows, και μετά ξαναδοκίμασε.");
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }

@@ -255,15 +255,15 @@
   <div class="card">
     <h2>{S.lang === "el" ? "Σύνδεση με Claude Desktop (προαιρετική)" : "Claude Desktop connection (optional)"}</h2>
     <p class="small dim">{S.lang === "el"
-      ? "Απενεργοποιημένη από προεπιλογή: τίποτα δεν ακούει στον υπολογιστή σου. Αν την ανοίξεις, η εφαρμογή ακούει μόνο στο ίδιο PC με μυστικό κωδικό ώστε η επέκταση MCP του Claude Desktop να δίνει εντολές. Θέλει επανεκκίνηση της εφαρμογής."
-      : "Off by default: nothing listens on your computer. If you turn it on, the app listens on this PC only, behind a secret token, so the Claude Desktop MCP extension can send it commands. Needs an app restart."}</p>
+      ? "Απενεργοποιημένη από προεπιλογή: τίποτα δεν ακούει στον υπολογιστή σου. Αν την ανοίξεις, η εφαρμογή ακούει μόνο στο ίδιο PC με μυστικό κωδικό ώστε η επέκταση MCP του Claude Desktop να δίνει εντολές. Ισχύει αμέσως."
+      : "Off by default: nothing listens on your computer. If you turn it on, the app listens on this PC only, behind a secret token, so the Claude Desktop MCP extension can send it commands. Takes effect immediately."}</p>
     <label class="row"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
       {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με Claude Desktop" : "Allow the Claude Desktop connection"}</label>
   </div>
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.6.0" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.6.1" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}
