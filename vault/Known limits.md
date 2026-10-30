@@ -21,3 +21,5 @@ tags: [ai-video-studio, risk]
 
 12. v0.5.0 tools (voice, background removal, upscale, Qwen edit, RIFE, LatentSync, chaining at run time) were written from node source code by research agents and never run: expect fixes to node/input names on the first real run (`SaveVideo` format/codec keys, `LoadAudio` decode, Kokoro/kokoro-onnx version, Chatterbox VRAM on 8 GB). Local ComfyUI + models were deleted on request: re-run the wizard first.
 13. Image editor AI menu: checked only that the servers answer, not clicked in a real window.
+
+14. Security audit (Fable subagent, 2026-10-30) fixed in 0.5.3: no insecure TLS retry to workers; API Host check + constant-time token + empty 404; image_path via stash_input; editor postMessage origin check; CSP + runtime asset scope (`sync_asset_scope`); nodes pinned by `rev` in models.json; user HF packs only .safetensors/.gguf; imported workflows cannot reuse bundled ids; chat prompt sanitises workflow text. Open: bundled pickle weights (chatterbox .pt, RealESRGAN .pth) and ComfyUI/7zr downloads have no checksum yet; Gemini CLI runs with default tools; installer/.mcpb built locally, unsigned (build in CI later).
