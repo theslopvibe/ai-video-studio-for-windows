@@ -15,3 +15,6 @@ app/tests/e2e/out/
 # internal agent handoff notes
 memory.md
 PLAN.md
+
+# built editor (python editor/build.py)
+app/src-tauri/editor-dist/

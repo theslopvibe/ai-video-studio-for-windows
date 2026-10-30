@@ -54,6 +54,7 @@ export function installMock(hw: unknown = gpuNvidia) {
       case "secret_set": return { vast_api_key: true };
       case "test_vast": return { ok: true, message: "ok", endpoint: null, all_endpoints: [] };
       case "job_enqueue": return { id: "j1" };
+      case "editor_url": return "http://127.0.0.1:5200";
       case "log_ui": return;
       case "chat_providers": return [
         { id: "claude_sub", label: "Claude (subscription via Claude Code)", model: "sonnet", needs_key: false, has_key: true },

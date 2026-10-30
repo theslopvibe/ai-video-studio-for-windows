@@ -1,0 +1,2366 @@
+diff --git a/apps/web/next.config.ts b/apps/web/next.config.ts
+index 71d96c2..d7c1710 100644
+--- a/apps/web/next.config.ts
++++ b/apps/web/next.config.ts
+@@ -1,54 +1,12 @@
+-import type { NextConfig } from "next";
+-import { withBotId } from "botid/next/config";
+-import { withContentCollections } from "@content-collections/next";
+-
+-const nextConfig: NextConfig = {
+-	compiler: {
+-		removeConsole: process.env.NODE_ENV === "production",
+-	},
+-	reactStrictMode: true,
+-	productionBrowserSourceMaps: true,
+-	output: "standalone",
+-	images: {
+-		remotePatterns: [
+-			{
+-				protocol: "https",
+-				hostname: "plus.unsplash.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "images.unsplash.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "images.marblecms.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "lh3.googleusercontent.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "avatars.githubusercontent.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "api.iconify.design",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "api.simplesvg.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "api.unisvg.com",
+-			},
+-			{
+-				protocol: "https",
+-				hostname: "cdn.brandfetch.io",
+-			},
+-		],
+-	},
+-};
+-
+-export default withContentCollections(withBotId(nextConfig));
++import type { NextConfig } from "next";
++
++// Static export so the editor runs offline inside AI Video Studio (served by the app from a local server).
++const nextConfig: NextConfig = {
++	output: "export",
++	trailingSlash: true,
++	images: { unoptimized: true },
++	reactStrictMode: true,
++	typescript: { ignoreBuildErrors: true },
++};
++
++export default nextConfig;
+diff --git a/apps/web/src/actions/keybinding.ts b/apps/web/src/actions/keybinding.ts
+index aeec2fd..483769c 100644
+--- a/apps/web/src/actions/keybinding.ts
++++ b/apps/web/src/actions/keybinding.ts
+@@ -38,6 +38,14 @@ export type SingleCharacterShortcutKey = `${Key}`;
+ 
+ export type ShortcutKey = ModifierBasedShortcutKey | SingleCharacterShortcutKey;
+ 
++const MODIFIERS: ReadonlySet<string> = new Set(["ctrl", "alt", "shift"]);
++
++export function isShortcutKey(value: string): value is ShortcutKey {
++	const parts = value.split("+");
++	const key = parts.pop() ?? "";
++	return KEY_SET.has(key) && parts.every((m) => MODIFIERS.has(m));
++}
++
+ export type KeybindingConfig = {
+ 	[key in ShortcutKey]?: TActionWithOptionalArgs;
+ };
+diff --git a/apps/web/src/app/api/auth/[...all]/route.ts b/apps/web/src/app/api/auth/[...all]/route.ts
+deleted file mode 100644
+index edf0d0c..0000000
+--- a/apps/web/src/app/api/auth/[...all]/route.ts
++++ /dev/null
+@@ -1,4 +0,0 @@
+-import { auth } from "@/auth/server";
+-import { toNextJsHandler } from "better-auth/next-js";
+-
+-export const { POST, GET } = toNextJsHandler(auth);
+diff --git a/apps/web/src/app/api/feedback/route.ts b/apps/web/src/app/api/feedback/route.ts
+deleted file mode 100644
+index cd853ee..0000000
+--- a/apps/web/src/app/api/feedback/route.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-import { type NextRequest, NextResponse } from "next/server";
+-import { z } from "zod";
+-import { checkRateLimit } from "@/auth/rate-limit";
+-import { submitFeedback, MAX_MESSAGE_LENGTH } from "@/feedback";
+-
+-const submitSchema = z.object({
+-	message: z
+-		.string()
+-		.min(1, "Message is required")
+-		.max(MAX_MESSAGE_LENGTH, "Message too long"),
+-});
+-
+-export async function POST(request: NextRequest) {
+-	const { limited } = await checkRateLimit({ request });
+-	if (limited) {
+-		return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+-	}
+-
+-	const body = await request.json();
+-	const result = submitSchema.safeParse(body);
+-
+-	if (!result.success) {
+-		return NextResponse.json(
+-			{ error: "Invalid input", details: result.error.flatten().fieldErrors },
+-			{ status: 400 },
+-		);
+-	}
+-
+-	const entry = await submitFeedback(result.data);
+-	return NextResponse.json({ entry }, { status: 201 });
+-}
+diff --git a/apps/web/src/app/api/health/route.ts b/apps/web/src/app/api/health/route.ts
+deleted file mode 100644
+index dbe6fdb..0000000
+--- a/apps/web/src/app/api/health/route.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-export async function GET() {
+-	return new Response("OK", { status: 200 });
+-}
+diff --git a/apps/web/src/app/api/sounds/search/route.ts b/apps/web/src/app/api/sounds/search/route.ts
+deleted file mode 100644
+index aa7a1b6..0000000
+--- a/apps/web/src/app/api/sounds/search/route.ts
++++ /dev/null
+@@ -1,280 +0,0 @@
+-import { webEnv } from "@/env/web";
+-import { type NextRequest, NextResponse } from "next/server";
+-import { z } from "zod";
+-import { checkRateLimit } from "@/auth/rate-limit";
+-
+-const searchParamsSchema = z.object({
+-	q: z.string().max(500, "Query too long").optional(),
+-	type: z.enum(["songs", "effects"]).optional(),
+-	page: z.coerce.number().int().min(1).max(1000).default(1),
+-	page_size: z.coerce.number().int().min(1).max(150).default(20),
+-	sort: z
+-		.enum(["downloads", "rating", "created", "score"])
+-		.default("downloads"),
+-	min_rating: z.coerce.number().min(0).max(5).default(3),
+-	commercial_only: z.coerce.boolean().default(true),
+-});
+-
+-const freesoundResultSchema = z.object({
+-	id: z.number(),
+-	name: z.string(),
+-	description: z.string(),
+-	url: z.string().url(),
+-	previews: z
+-		.object({
+-			"preview-hq-mp3": z.string().url(),
+-			"preview-lq-mp3": z.string().url(),
+-			"preview-hq-ogg": z.string().url(),
+-			"preview-lq-ogg": z.string().url(),
+-		})
+-		.optional(),
+-	download: z.string().url().optional(),
+-	duration: z.number(),
+-	filesize: z.number(),
+-	type: z.string(),
+-	channels: z.number(),
+-	bitrate: z.number(),
+-	bitdepth: z.number(),
+-	samplerate: z.number(),
+-	username: z.string(),
+-	tags: z.array(z.string()),
+-	license: z.string(),
+-	created: z.string(),
+-	num_downloads: z.number().optional(),
+-	avg_rating: z.number().optional(),
+-	num_ratings: z.number().optional(),
+-});
+-
+-const freesoundResponseSchema = z.object({
+-	count: z.number(),
+-	next: z.string().url().nullable(),
+-	previous: z.string().url().nullable(),
+-	results: z.array(freesoundResultSchema),
+-});
+-
+-const transformedResultSchema = z.object({
+-	id: z.number(),
+-	name: z.string(),
+-	description: z.string(),
+-	url: z.string(),
+-	previewUrl: z.string().optional(),
+-	downloadUrl: z.string().optional(),
+-	duration: z.number(),
+-	filesize: z.number(),
+-	type: z.string(),
+-	channels: z.number(),
+-	bitrate: z.number(),
+-	bitdepth: z.number(),
+-	samplerate: z.number(),
+-	username: z.string(),
+-	tags: z.array(z.string()),
+-	license: z.string(),
+-	created: z.string(),
+-	downloads: z.number().optional(),
+-	rating: z.number().optional(),
+-	ratingCount: z.number().optional(),
+-});
+-
+-const apiResponseSchema = z.object({
+-	count: z.number(),
+-	next: z.string().nullable(),
+-	previous: z.string().nullable(),
+-	results: z.array(transformedResultSchema),
+-	query: z.string().optional(),
+-	type: z.string(),
+-	page: z.number(),
+-	pageSize: z.number(),
+-	sort: z.string(),
+-	minRating: z.number().optional(),
+-});
+-
+-function buildSortParameter({ query, sort }: { query?: string; sort: string }) {
+-	if (!query) return `${sort}_desc`;
+-	return sort === "score" ? "score" : `${sort}_desc`;
+-}
+-
+-function applyEffectsFilters({
+-	params,
+-	min_rating,
+-	commercial_only,
+-}: {
+-	params: URLSearchParams;
+-	min_rating: number;
+-	commercial_only: boolean;
+-}) {
+-	params.append("filter", "duration:[* TO 30.0]");
+-	params.append("filter", `avg_rating:[${min_rating} TO *]`);
+-
+-	if (commercial_only) {
+-		params.append(
+-			"filter",
+-			'license:("Attribution" OR "Creative Commons 0" OR "Attribution Noncommercial" OR "Attribution Commercial")',
+-		);
+-	}
+-
+-	params.append(
+-		"filter",
+-		"tag:sound-effect OR tag:sfx OR tag:foley OR tag:ambient OR tag:nature OR tag:mechanical OR tag:electronic OR tag:impact OR tag:whoosh OR tag:explosion",
+-	);
+-}
+-
+-function transformFreesoundResult(
+-	result: z.infer<typeof freesoundResultSchema>,
+-) {
+-	return {
+-		id: result.id,
+-		name: result.name,
+-		description: result.description,
+-		url: result.url,
+-		previewUrl:
+-			result.previews?.["preview-hq-mp3"] ||
+-			result.previews?.["preview-lq-mp3"],
+-		downloadUrl: result.download,
+-		duration: result.duration,
+-		filesize: result.filesize,
+-		type: result.type,
+-		channels: result.channels,
+-		bitrate: result.bitrate,
+-		bitdepth: result.bitdepth,
+-		samplerate: result.samplerate,
+-		username: result.username,
+-		tags: result.tags,
+-		license: result.license,
+-		created: result.created,
+-		downloads: result.num_downloads || 0,
+-		rating: result.avg_rating || 0,
+-		ratingCount: result.num_ratings || 0,
+-	};
+-}
+-
+-export async function GET(request: NextRequest) {
+-	try {
+-		const { limited } = await checkRateLimit({ request });
+-		if (limited) {
+-			return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+-		}
+-
+-		const { searchParams } = new URL(request.url);
+-
+-		const validationResult = searchParamsSchema.safeParse({
+-			q: searchParams.get("q") || undefined,
+-			type: searchParams.get("type") || undefined,
+-			page: searchParams.get("page") || undefined,
+-			page_size: searchParams.get("page_size") || undefined,
+-			sort: searchParams.get("sort") || undefined,
+-			min_rating: searchParams.get("min_rating") || undefined,
+-		});
+-
+-		if (!validationResult.success) {
+-			return NextResponse.json(
+-				{
+-					error: "Invalid parameters",
+-					details: validationResult.error.flatten().fieldErrors,
+-				},
+-				{ status: 400 },
+-			);
+-		}
+-
+-		const {
+-			q: query,
+-			type,
+-			page,
+-			page_size: pageSize,
+-			sort,
+-			min_rating,
+-			commercial_only,
+-		} = validationResult.data;
+-
+-		if (type === "songs") {
+-			return NextResponse.json(
+-				{
+-					error: "Songs are not available yet",
+-					message:
+-						"Song search functionality is coming soon. Try searching for sound effects instead.",
+-				},
+-				{ status: 501 },
+-			);
+-		}
+-
+-		const baseUrl = "https://freesound.org/apiv2/search/text/";
+-
+-		const sortParam = buildSortParameter({ query, sort });
+-
+-		const params = new URLSearchParams({
+-			query: query || "",
+-			token: webEnv.FREESOUND_API_KEY,
+-			page: page.toString(),
+-			page_size: pageSize.toString(),
+-			sort: sortParam,
+-			fields:
+-				"id,name,description,url,previews,download,duration,filesize,type,channels,bitrate,bitdepth,samplerate,username,tags,license,created,num_downloads,avg_rating,num_ratings",
+-		});
+-
+-		const isEffectsSearch = type === "effects" || !type;
+-		if (isEffectsSearch) {
+-			applyEffectsFilters({ params, min_rating, commercial_only });
+-		}
+-
+-		const response = await fetch(`${baseUrl}?${params.toString()}`);
+-
+-		if (!response.ok) {
+-			const errorText = await response.text();
+-			console.error("Freesound API error:", response.status, errorText);
+-			return NextResponse.json(
+-				{ error: "Failed to search sounds" },
+-				{ status: response.status },
+-			);
+-		}
+-
+-		const rawData = await response.json();
+-
+-		const freesoundValidation = freesoundResponseSchema.safeParse(rawData);
+-		if (!freesoundValidation.success) {
+-			console.error(
+-				"Invalid Freesound API response:",
+-				freesoundValidation.error,
+-			);
+-			return NextResponse.json(
+-				{ error: "Invalid response from Freesound API" },
+-				{ status: 502 },
+-			);
+-		}
+-
+-		const data = freesoundValidation.data;
+-
+-		const transformedResults = data.results.map(transformFreesoundResult);
+-
+-		const responseData = {
+-			count: data.count,
+-			next: data.next,
+-			previous: data.previous,
+-			results: transformedResults,
+-			query: query || "",
+-			type: type || "effects",
+-			page,
+-			pageSize,
+-			sort,
+-			minRating: min_rating,
+-		};
+-
+-		const responseValidation = apiResponseSchema.safeParse(responseData);
+-		if (!responseValidation.success) {
+-			console.error(
+-				"Invalid API response structure:",
+-				responseValidation.error,
+-			);
+-			return NextResponse.json(
+-				{ error: "Internal response formatting error" },
+-				{ status: 500 },
+-			);
+-		}
+-
+-		return NextResponse.json(responseValidation.data);
+-	} catch (error) {
+-		console.error("Error searching sounds:", error);
+-		return NextResponse.json(
+-			{ error: "Internal server error" },
+-			{ status: 500 },
+-		);
+-	}
+-}
+diff --git a/apps/web/src/app/blog/[slug]/page.tsx b/apps/web/src/app/blog/[slug]/page.tsx
+deleted file mode 100644
+index dba9b50..0000000
+--- a/apps/web/src/app/blog/[slug]/page.tsx
++++ /dev/null
+@@ -1,135 +0,0 @@
+-import type { Metadata } from "next";
+-import Image from "next/image";
+-import { notFound } from "next/navigation";
+-import { BasePage } from "@/app/base-page";
+-import Prose from "@/components/ui/prose";
+-import { Separator } from "@/components/ui/separator";
+-import { getPosts, getSinglePost, processHtmlContent } from "@/blog/query";
+-import type { Author, Post } from "@/blog/types";
+-
+-type PageProps = {
+-	params: Promise<{ slug: string }>;
+-	searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+-};
+-
+-export async function generateMetadata({
+-	params,
+-}: PageProps): Promise<Metadata> {
+-	const slug = (await params).slug;
+-
+-	const data = await getSinglePost({ slug });
+-
+-	if (!data || !data.post) return {};
+-
+-	return {
+-		title: data.post.title,
+-		description: data.post.description,
+-		twitter: {
+-			title: `${data.post.title}`,
+-			description: `${data.post.description}`,
+-			card: "summary_large_image",
+-			images: [
+-				{
+-					url: data.post.coverImage,
+-					width: "1200",
+-					height: "630",
+-					alt: data.post.title,
+-				},
+-			],
+-		},
+-		openGraph: {
+-			type: "article",
+-			images: [
+-				{
+-					url: data.post.coverImage,
+-					width: "1200",
+-					height: "630",
+-					alt: data.post.title,
+-				},
+-			],
+-			title: data.post.title,
+-			description: data.post.description,
+-			publishedTime: new Date(data.post.publishedAt).toISOString(),
+-			authors: data.post.authors.map((author: Author) => author.name),
+-		},
+-	};
+-}
+-
+-export async function generateStaticParams() {
+-	const data = await getPosts();
+-	if (!data || !data.posts.length) return [];
+-
+-	return data.posts.map((post) => ({
+-		slug: post.slug,
+-	}));
+-}
+-
+-export default async function BlogPostPage({ params }: PageProps) {
+-	const slug = (await params).slug;
+-	const data = await getSinglePost({ slug });
+-	if (!data || !data.post) return notFound();
+-
+-	const html = await processHtmlContent({ html: data.post.content });
+-
+-	return (
+-		<BasePage>
+-			<PostHeader post={data.post} />
+-			<Separator />
+-			<PostContent html={html} />
+-		</BasePage>
+-	);
+-}
+-
+-function PostHeader({ post }: { post: Post }) {
+-	const formattedDate = new Date(post.publishedAt).toLocaleDateString("en-US", {
+-		day: "numeric",
+-		month: "long",
+-		year: "numeric",
+-	});
+-
+-	return (
+-		<div className="flex flex-col items-center justify-center gap-8">
+-			<PostMeta date={formattedDate} publishedAt={post.publishedAt} />
+-			<PostTitle title={post.title} />
+-			{post.coverImage && <PostCoverImage post={post} />}
+-		</div>
+-	);
+-}
+-
+-function PostCoverImage({ post }: { post: Post }) {
+-	return (
+-		<div className="relative aspect-video overflow-hidden rounded-lg w-full mt-4">
+-			<Image
+-				src={post.coverImage}
+-				alt={post.title}
+-				loading="eager"
+-				fill
+-				className="rounded-lg object-cover"
+-			/>
+-		</div>
+-	);
+-}
+-
+-function PostMeta({ date, publishedAt }: { date: string; publishedAt: Date }) {
+-	return (
+-		<div className="flex items-center justify-center">
+-			<time dateTime={publishedAt.toString()}>{date}</time>
+-		</div>
+-	);
+-}
+-
+-function PostTitle({ title }: { title: string }) {
+-	return (
+-		<h1 className="text-5xl font-bold tracking-tight md:text-4xl text-center">
+-			{title}
+-		</h1>
+-	);
+-}
+-
+-function PostContent({ html }: { html: string }) {
+-	return (
+-		<section className="">
+-			<Prose html={html} />
+-		</section>
+-	);
+-}
+diff --git a/apps/web/src/app/blog/page.tsx b/apps/web/src/app/blog/page.tsx
+deleted file mode 100644
+index b40bc2f..0000000
+--- a/apps/web/src/app/blog/page.tsx
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import type { Metadata } from "next";
+-import Link from "next/link";
+-import { BasePage } from "@/app/base-page";
+-import { Separator } from "@/components/ui/separator";
+-import { getPosts } from "@/blog/query";
+-import type { Post } from "@/blog/types";
+-
+-export const metadata: Metadata = {
+-	title: "Blog - OpenCut",
+-	description:
+-		"Read the latest news and updates about OpenCut, the free and open-source video editor.",
+-	openGraph: {
+-		title: "Blog - OpenCut",
+-		description:
+-			"Read the latest news and updates about OpenCut, the free and open-source video editor.",
+-		type: "website",
+-	},
+-};
+-
+-export default async function BlogPage() {
+-	const data = await getPosts().catch(() => null);
+-	if (!data || !data.posts) return <div>No posts yet</div>;
+-
+-	return (
+-		<BasePage
+-			title="Blog"
+-			description="Read the latest news and updates about OpenCut, the free and open-source video editor."
+-		>
+-			<div className="flex flex-col">
+-				{data.posts.map((post) => (
+-					<div key={post.id} className="flex flex-col">
+-						<BlogPostItem post={post} />
+-						<Separator />
+-					</div>
+-				))}
+-			</div>
+-		</BasePage>
+-	);
+-}
+-
+-function BlogPostItem({ post }: { post: Post }) {
+-	return (
+-		<Link href={`/blog/${post.slug}`}>
+-			<div className="flex h-auto w-full items-center justify-between py-6 opacity-100 hover:opacity-75">
+-				<div className="flex flex-col gap-2">
+-					<h2 className="text-xl font-semibold">{post.title}</h2>
+-					<p className="text-muted-foreground">{post.description}</p>
+-				</div>
+-			</div>
+-		</Link>
+-	);
+-}
+diff --git a/apps/web/src/app/changelog/[version]/page.tsx b/apps/web/src/app/changelog/[version]/page.tsx
+deleted file mode 100644
+index 6c529ce..0000000
+--- a/apps/web/src/app/changelog/[version]/page.tsx
++++ /dev/null
+@@ -1,102 +0,0 @@
+-import type { Metadata } from "next";
+-import Link from "next/link";
+-import { notFound } from "next/navigation";
+-import { BasePage } from "@/app/base-page";
+-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+-import { getReleaseByVersion, getSortedReleases } from "@/changelog/utils";
+-import {
+-	ReleaseArticle,
+-	ReleaseMeta,
+-	ReleaseTitle,
+-	ReleaseDescription,
+-	ReleaseChanges,
+-} from "@/changelog/components/release";
+-import { CopyMarkdownButton } from "@/changelog/components/copy-markdown-button";
+-
+-type Props = { params: Promise<{ version: string }> };
+-
+-export async function generateStaticParams() {
+-	return getSortedReleases().map((release) => ({ version: release.version }));
+-}
+-
+-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+-	const { version } = await params;
+-	const release = getReleaseByVersion({ version });
+-	if (!release) return {};
+-	return {
+-		title: `${release.title} (${release.version}) - OpenCut Changelog`,
+-		description: release.description,
+-	};
+-}
+-
+-export default async function ReleaseDetailPage({ params }: Props) {
+-	const { version } = await params;
+-	const releases = getSortedReleases();
+-	const index = releases.findIndex((entry) => entry.version === version);
+-	if (index === -1) notFound();
+-	const release = releases[index];
+-	const newer = index > 0 ? releases[index - 1] : null;
+-	const older = index < releases.length - 1 ? releases[index + 1] : null;
+-
+-	return (
+-		<BasePage>
+-			<div className="mx-auto w-full max-w-3xl flex flex-col gap-12">
+-				<Link
+-					href="/changelog"
+-					className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 w-fit"
+-				>
+-					<ChevronLeftIcon className="size-4" />
+-					All releases
+-				</Link>
+-
+-				<ReleaseArticle variant="detail">
+-					<div className="flex flex-col gap-4">
+-						<div className="flex items-center justify-between">
+-							<ReleaseMeta release={release} />
+-							<CopyMarkdownButton
+-								description={release.description}
+-								changes={release.changes}
+-							/>
+-						</div>
+-						<ReleaseTitle as="h1">{release.title}</ReleaseTitle>
+-						{release.description && (
+-							<ReleaseDescription>{release.description}</ReleaseDescription>
+-						)}
+-					</div>
+-					<ReleaseChanges release={release} />
+-				</ReleaseArticle>
+-
+-				<nav className="flex items-center justify-between border-t pt-8">
+-					{older ? (
+-						<Link
+-							href={`/changelog/${older.version}`}
+-							className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground group"
+-						>
+-							<ChevronLeftIcon className="size-4" />
+-							<div className="flex flex-col">
+-								<span className="text-xs text-muted-foreground/60">Older</span>
+-								<span className="font-medium">{older.title}</span>
+-							</div>
+-						</Link>
+-					) : (
+-						<div />
+-					)}
+-					{newer ? (
+-						<Link
+-							href={`/changelog/${newer.version}`}
+-							className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground group text-right"
+-						>
+-							<div className="flex flex-col">
+-								<span className="text-xs text-muted-foreground/60">Newer</span>
+-								<span className="font-medium">{newer.title}</span>
+-							</div>
+-							<ChevronRightIcon className="size-4" />
+-						</Link>
+-					) : (
+-						<div />
+-					)}
+-				</nav>
+-			</div>
+-		</BasePage>
+-	);
+-}
+diff --git a/apps/web/src/app/changelog/page.tsx b/apps/web/src/app/changelog/page.tsx
+deleted file mode 100644
+index 25ae25d..0000000
+--- a/apps/web/src/app/changelog/page.tsx
++++ /dev/null
+@@ -1,83 +0,0 @@
+-import type { Metadata } from "next";
+-import { BasePage } from "@/app/base-page";
+-import { Separator } from "@/components/ui/separator";
+-import {
+-	type Release as ReleaseType,
+-	getSortedReleases,
+-} from "@/changelog/utils";
+-import {
+-	ReleaseArticle,
+-	ReleaseMeta,
+-	ReleaseTitle,
+-	ReleaseDescription,
+-	ReleaseChanges,
+-} from "@/changelog/components/release";
+-
+-export const metadata: Metadata = {
+-	title: "Changelog - OpenCut",
+-	description: "What's new in OpenCut",
+-	openGraph: {
+-		title: "Changelog - OpenCut",
+-		description: "Every update, improvement, and fix to OpenCut — documented.",
+-		type: "website",
+-		images: [
+-			{
+-				url: "/open-graph/changlog.jpg",
+-				width: 1200,
+-				height: 630,
+-				alt: "OpenCut Changelog",
+-			},
+-		],
+-	},
+-	twitter: {
+-		card: "summary_large_image",
+-		title: "Changelog - OpenCut",
+-		description: "What's new in OpenCut",
+-		images: ["/open-graph/changlog.jpg"],
+-	},
+-};
+-
+-export default function ChangelogPage() {
+-	const releases = getSortedReleases();
+-
+-	return (
+-		<BasePage title="Changelog" description="See what's new in OpenCut">
+-			<div className="mx-auto w-full max-w-3xl">
+-				<div className="relative">
+-					<div
+-						aria-hidden
+-						className="absolute top-2 bottom-0 left-[5px] w-px bg-border hidden sm:block"
+-					/>
+-
+-					<div className="flex flex-col">
+-						{releases.map((release, releaseIndex) => (
+-							<div key={release.version} className="flex flex-col">
+-								<ReleaseEntry release={release} />
+-								{releaseIndex < releases.length - 1 && (
+-									<Separator className="my-10 sm:ml-1.5" />
+-								)}
+-							</div>
+-						))}
+-					</div>
+-				</div>
+-			</div>
+-		</BasePage>
+-	);
+-}
+-
+-function ReleaseEntry({ release }: { release: ReleaseType }) {
+-	return (
+-		<ReleaseArticle variant="list" isLatest={release.isLatest}>
+-			<ReleaseMeta release={release} />
+-			<div className="flex flex-col gap-4">
+-				<ReleaseTitle as="h2" href={`/changelog/${release.version}`}>
+-					{release.title}
+-				</ReleaseTitle>
+-				{release.description && (
+-					<ReleaseDescription>{release.description}</ReleaseDescription>
+-				)}
+-			</div>
+-			<ReleaseChanges release={release} />
+-		</ReleaseArticle>
+-	);
+-}
+diff --git a/apps/web/src/app/contributors/page.tsx b/apps/web/src/app/contributors/page.tsx
+deleted file mode 100644
+index f4d1373..0000000
+--- a/apps/web/src/app/contributors/page.tsx
++++ /dev/null
+@@ -1,242 +0,0 @@
+-import type { Metadata } from "next";
+-import Link from "next/link";
+-import { GitHubContributeSection } from "@/components/gitHub-contribute-section";
+-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+-import { Card, CardContent } from "@/components/ui/card";
+-import { EXTERNAL_TOOLS } from "@/site/external-tools";
+-import { BasePage } from "../base-page";
+-
+-export const metadata: Metadata = {
+-	title: "Contributors - OpenCut",
+-	description:
+-		"Meet the amazing people who contribute to OpenCut, the free and open-source video editor.",
+-	openGraph: {
+-		title: "Contributors - OpenCut",
+-		description:
+-			"Meet the amazing people who contribute to OpenCut, the free and open-source video editor.",
+-		type: "website",
+-	},
+-};
+-
+-interface Contributor {
+-	id: number;
+-	login: string;
+-	avatar_url: string;
+-	html_url: string;
+-	contributions: number;
+-	type: string;
+-}
+-
+-async function getContributors(): Promise<Contributor[]> {
+-	try {
+-		const response = await fetch(
+-			"https://api.github.com/repos/OpenCut-app/OpenCut/contributors?per_page=100",
+-			{
+-				headers: {
+-					Accept: "application/vnd.github.v3+json",
+-					"User-Agent": "OpenCut-Web-App",
+-				},
+-				next: { revalidate: 600 }, // 10 minutes
+-			},
+-		);
+-
+-		if (!response.ok) {
+-			console.error("Failed to fetch contributors");
+-			return [];
+-		}
+-
+-		const contributors = (await response.json()) as Contributor[];
+-
+-		const filteredContributors = contributors.filter(
+-			(contributor) => contributor.type === "User",
+-		);
+-
+-		return filteredContributors;
+-	} catch (error) {
+-		console.error("Error fetching contributors:", error);
+-		return [];
+-	}
+-}
+-
+-export default async function ContributorsPage() {
+-	const contributors = await getContributors();
+-	const topContributors = contributors.slice(0, 2);
+-	const otherContributors = contributors.slice(2);
+-	const totalContributions = contributors.reduce(
+-		(sum, c) => sum + c.contributions,
+-		0,
+-	);
+-
+-	return (
+-		<BasePage
+-			title="Contributors"
+-			description="Meet the amazing people who contribute to OpenCut, the free and open-source video editor."
+-		>
+-			<div className="-mt-4 flex items-center justify-center gap-8 text-sm">
+-				<StatItem value={contributors.length} label="contributors" />
+-				<StatItem value={totalContributions} label="contributions" />
+-			</div>
+-
+-			<div className="mx-auto flex max-w-6xl flex-col gap-20">
+-				{topContributors.length > 0 && (
+-					<TopContributorsSection contributors={topContributors} />
+-				)}
+-				{otherContributors.length > 0 && (
+-					<AllContributorsSection contributors={otherContributors} />
+-				)}
+-				<ExternalToolsSection />
+-				<GitHubContributeSection
+-					title="Join the community"
+-					description="OpenCut is built by developers like you. Every contribution, no matter how small, helps make video editing more accessible for everyone."
+-				/>
+-			</div>
+-		</BasePage>
+-	);
+-}
+-
+-function StatItem({ value, label }: { value: number; label: string }) {
+-	return (
+-		<div className="flex items-center gap-2">
+-			<div className="bg-foreground size-2 rounded-full" />
+-			<span className="font-medium">{value}</span>
+-			<span className="text-muted-foreground">{label}</span>
+-		</div>
+-	);
+-}
+-
+-function TopContributorsSection({
+-	contributors,
+-}: {
+-	contributors: Contributor[];
+-}) {
+-	return (
+-		<div className="flex flex-col gap-10">
+-			<div className="flex flex-col gap-2 text-center">
+-				<h2 className="text-2xl font-semibold">Top contributors</h2>
+-				<p className="text-muted-foreground">
+-					Leading the way in contributions
+-				</p>
+-			</div>
+-
+-			<div className="mx-auto flex w-full max-w-xl flex-col justify-center gap-6 md:flex-row">
+-				{contributors.map((contributor) => (
+-					<TopContributorCard key={contributor.id} contributor={contributor} />
+-				))}
+-			</div>
+-		</div>
+-	);
+-}
+-
+-function TopContributorCard({ contributor }: { contributor: Contributor }) {
+-	return (
+-		<Link
+-			href={contributor.html_url}
+-			target="_blank"
+-			rel="noopener noreferrer"
+-			className="w-full"
+-		>
+-			<Card>
+-				<CardContent className="flex flex-col gap-6 p-8 text-center">
+-					<Avatar className="mx-auto size-28">
+-						<AvatarImage
+-							src={contributor.avatar_url}
+-							alt={`${contributor.login}'s avatar`}
+-						/>
+-						<AvatarFallback className="text-lg font-semibold">
+-							{contributor.login.charAt(0).toUpperCase()}
+-						</AvatarFallback>
+-					</Avatar>
+-					<div className="flex flex-col gap-2">
+-						<h3 className="text-xl font-semibold">{contributor.login}</h3>
+-						<div className="flex items-center justify-center gap-2">
+-							<span className="font-medium">{contributor.contributions}</span>
+-							<span className="text-muted-foreground">contributions</span>
+-						</div>
+-					</div>
+-				</CardContent>
+-			</Card>
+-		</Link>
+-	);
+-}
+-
+-function AllContributorsSection({
+-	contributors,
+-}: {
+-	contributors: Contributor[];
+-}) {
+-	return (
+-		<div className="flex flex-col gap-12">
+-			<div className="flex flex-col gap-2 text-center">
+-				<h2 className="text-2xl font-semibold">All contributors</h2>
+-				<p className="text-muted-foreground">
+-					Everyone who makes OpenCut better
+-				</p>
+-			</div>
+-
+-			<div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+-				{contributors.map((contributor) => (
+-					<Link
+-						key={contributor.id}
+-						href={contributor.html_url}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="opacity-100 hover:opacity-70"
+-					>
+-						<div className="flex flex-col items-center gap-2 p-2">
+-							<Avatar className="size-16">
+-								<AvatarImage
+-									src={contributor.avatar_url}
+-									alt={`${contributor.login}'s avatar`}
+-								/>
+-								<AvatarFallback>
+-									{contributor.login.charAt(0).toUpperCase()}
+-								</AvatarFallback>
+-							</Avatar>
+-							<div className="text-center">
+-								<h3 className="text-sm font-medium">{contributor.login}</h3>
+-								<p className="text-muted-foreground text-xs">
+-									{contributor.contributions}
+-								</p>
+-							</div>
+-						</div>
+-					</Link>
+-				))}
+-			</div>
+-		</div>
+-	);
+-}
+-
+-function ExternalToolsSection() {
+-	return (
+-		<div className="flex flex-col gap-10">
+-			<div className="flex flex-col gap-2 text-center">
+-				<h2 className="text-2xl font-semibold">External tools</h2>
+-				<p className="text-muted-foreground">Tools we use to build OpenCut</p>
+-			</div>
+-
+-			<div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 sm:grid-cols-2">
+-				{EXTERNAL_TOOLS.map((tool, index) => (
+-					<Link
+-						key={tool.url}
+-						href={tool.url}
+-						target="_blank"
+-						className="block"
+-						style={{ animationDelay: `${index * 100}ms` }}
+-					>
+-						<Card className="h-full">
+-							<CardContent className="flex items-center justify-center h-full flex-col gap-4 p-6 text-center">
+-								<tool.icon className="size-8" />
+-								<div className="flex flex-1 flex-col gap-2">
+-									<h3 className="text-lg font-semibold">{tool.name}</h3>
+-									<p className="text-muted-foreground text-sm">
+-										{tool.description}
+-									</p>
+-								</div>
+-							</CardContent>
+-						</Card>
+-					</Link>
+-				))}
+-			</div>
+-		</div>
+-	);
+-}
+diff --git a/apps/web/src/app/editor/[project_id]/layout.tsx b/apps/web/src/app/editor/[project_id]/layout.tsx
+new file mode 100644
+index 0000000..4dfc115
+--- /dev/null
++++ b/apps/web/src/app/editor/[project_id]/layout.tsx
+@@ -0,0 +1,8 @@
++// Static export has one editor page; the project id comes from ?id=... at runtime.
++export function generateStaticParams() {
++	return [{ project_id: "open" }];
++}
++
++export default function Layout({ children }: { children: React.ReactNode }) {
++	return children;
++}
+diff --git a/apps/web/src/app/editor/[project_id]/page.tsx b/apps/web/src/app/editor/[project_id]/page.tsx
+index 680dfff..7caba43 100644
+--- a/apps/web/src/app/editor/[project_id]/page.tsx
++++ b/apps/web/src/app/editor/[project_id]/page.tsx
+@@ -1,6 +1,5 @@
+ "use client";
+ 
+-import { useParams } from "next/navigation";
+ import {
+ 	ResizablePanelGroup,
+ 	ResizablePanel,
+@@ -17,12 +16,11 @@ import { MigrationDialog } from "@/project/components/migration-dialog";
+ import { usePanelStore } from "@/editor/panel-store";
+ import { usePasteMedia } from "@/media/use-paste-media";
+ import { MobileGate } from "@/components/editor/mobile-gate";
+-import { useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useEditor } from "@/editor/use-editor";
+ import { Cancel01Icon } from "@hugeicons/core-free-icons";
+ import { HugeiconsIcon } from "@hugeicons/react";
+ import { Button } from "@/components/ui/button";
+-import { ChangelogNotification } from "@/changelog/components/changelog-notification";
+ import {
+ 	createPreviewOverlayControl,
+ 	isPreviewOverlayVisible,
+@@ -36,8 +34,9 @@ import {
+ } from "@/timeline/bookmarks/index";
+ 
+ export default function Editor() {
+-	const params = useParams();
+-	const projectId = params.project_id as string;
++	const [projectId, setProjectId] = useState<string | null>(null);
++	useEffect(() => setProjectId(new URLSearchParams(window.location.search).get("id") ?? ""), []);
++	if (projectId === null) return null;
+ 
+ 	return (
+ 		<MobileGate>
+@@ -50,7 +49,6 @@ export default function Editor() {
+ 					</div>
+ 					<Onboarding />
+ 					<MigrationDialog />
+-					<ChangelogNotification />
+ 				</div>
+ 			</EditorProvider>
+ 		</MobileGate>
+diff --git a/apps/web/src/app/layout.tsx b/apps/web/src/app/layout.tsx
+index 558ae53..1c3c259 100644
+--- a/apps/web/src/app/layout.tsx
++++ b/apps/web/src/app/layout.tsx
+@@ -2,24 +2,14 @@ import { ThemeProvider } from "next-themes";
+ import Script from "next/script";
+ import "./globals.css";
+ import { Toaster } from "../components/ui/sonner";
+-import { ChangelogNotification } from "@/changelog/components/changelog-notification";
+ import { TooltipProvider } from "../components/ui/tooltip";
+ import { baseMetaData } from "./metadata";
+-import { BotIdClient } from "botid/client";
+-import { webEnv } from "@/env/web";
+ import { Inter } from "next/font/google";
+ 
+ const siteFont = Inter({ subsets: ["latin"] });
+ 
+ export const metadata = baseMetaData;
+ 
+-const protectedRoutes = [
+-	{
+-		path: "/none",
+-		method: "GET",
+-	},
+-];
+-
+ export default function RootLayout({
+ 	children,
+ }: Readonly<{
+@@ -28,16 +18,6 @@ export default function RootLayout({
+ 	return (
+ 		<html lang="en" suppressHydrationWarning>
+ 			<head>
+-				<BotIdClient protect={protectedRoutes} />
+-				{process.env.NODE_ENV === "development" && (
+-					<>
+-						<Script
+-							src="//unpkg.com/react-scan/dist/auto.global.js"
+-							crossOrigin="anonymous"
+-							strategy="beforeInteractive"
+-						/>
+-					</>
+-				)}
+ 			</head>
+ 			<body className={`${siteFont.className} font-sans antialiased`}>
+ 				<ThemeProvider
+@@ -47,18 +27,6 @@ export default function RootLayout({
+ 				>
+ 					<TooltipProvider>
+ 						<Toaster />
+-						<Script
+-							src="https://cdn.databuddy.cc/databuddy.js"
+-							strategy="afterInteractive"
+-							async
+-							data-client-id="UP-Wcoy5arxFeK7oyjMMZ"
+-							data-disabled={webEnv.NODE_ENV === "development"}
+-							data-track-attributes={false}
+-							data-track-errors={true}
+-							data-track-outgoing-links={false}
+-							data-track-web-vitals={false}
+-							data-track-sessions={false}
+-						/>
+ 						{children}
+ 					</TooltipProvider>
+ 				</ThemeProvider>
+diff --git a/apps/web/src/app/page.tsx b/apps/web/src/app/page.tsx
+index 6084a91..8531ace 100644
+--- a/apps/web/src/app/page.tsx
++++ b/apps/web/src/app/page.tsx
+@@ -1,21 +1,9 @@
+-import { Hero } from "@/components/landing/hero";
+-import { Header } from "@/components/header";
+-import { Footer } from "@/components/footer";
+-import type { Metadata } from "next";
+-import { SITE_URL } from "@/site/brand";
+-
+-export const metadata: Metadata = {
+-	alternates: {
+-		canonical: SITE_URL,
+-	},
+-};
+-
+-export default async function Home() {
+-	return (
+-		<div>
+-			<Header />
+-			<Hero />
+-			<Footer />
+-		</div>
+-	);
+-}
++"use client";
++import { useEffect } from "react";
++
++export default function Home() {
++	useEffect(() => {
++		window.location.replace("/projects/");
++	}, []);
++	return null;
++}
+diff --git a/apps/web/src/app/privacy/page.tsx b/apps/web/src/app/privacy/page.tsx
+deleted file mode 100644
+index 1777514..0000000
+--- a/apps/web/src/app/privacy/page.tsx
++++ /dev/null
+@@ -1,227 +0,0 @@
+-import type { Metadata } from "next";
+-import { BasePage } from "@/app/base-page";
+-import {
+-	Accordion,
+-	AccordionContent,
+-	AccordionItem,
+-	AccordionTrigger,
+-} from "@/components/ui/accordion";
+-import { Separator } from "@/components/ui/separator";
+-import { SOCIAL_LINKS } from "@/site/social";
+-
+-export const metadata: Metadata = {
+-	title: "Privacy Policy - OpenCut",
+-	description:
+-		"Learn how OpenCut handles your data and privacy. Our commitment to protecting your information while you edit videos.",
+-	openGraph: {
+-		title: "Privacy Policy - OpenCut",
+-		description:
+-			"Learn how OpenCut handles your data and privacy. Our commitment to protecting your information while you edit videos.",
+-		type: "website",
+-	},
+-};
+-
+-export default function PrivacyPage() {
+-	return (
+-		<BasePage
+-			title="Privacy policy"
+-			description="Learn how we handle your data and privacy. Contact us if you have any questions."
+-		>
+-			<Accordion type="single" collapsible className="w-full">
+-				<AccordionItem
+-					value="quick-summary"
+-					className="rounded-2xl border px-5"
+-				>
+-					<AccordionTrigger className="no-underline!">
+-						Quick summary
+-					</AccordionTrigger>
+-					<AccordionContent>
+-						<h3 className="mb-3 text-lg font-medium">
+-							Your content never leaves your device.
+-						</h3>
+-						<ol className="list-decimal space-y-2 pl-6">
+-							<li>
+-								Basic editing happens locally in your browser - we never see
+-								your files
+-							</li>
+-							<li>
+-								AI features like auto captions run locally in your browser
+-								too - nothing is uploaded
+-							</li>
+-							<li>
+-								OpenCut does not currently require an account or login
+-							</li>
+-							<li>Project data stays on your device, not our servers</li>
+-							<li>
+-								We use anonymized analytics to improve the app, but no personal video
+-								content is tracked
+-							</li>
+-							<li>You can clear local data from your browser at any time</li>
+-							<li>
+-								We don&apos;t sell or share your data with anyone (we don&apos;t
+-								even have it)
+-							</li>
+-						</ol>
+-						<p className="mt-4">
+-							Questions? Email us at{" "}
+-							<a
+-								href="mailto:oss@opencut.app"
+-								className="text-primary hover:underline"
+-							>
+-								oss@opencut.app
+-							</a>
+-						</p>
+-					</AccordionContent>
+-				</AccordionItem>
+-			</Accordion>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">How We Handle Your Content</h2>
+-				<p>
+-					<strong>
+-						All editing and processing happens locally on your device.
+-					</strong>{" "}
+-					We never upload, store, or have access to your video or audio files.
+-					Your content remains completely private and under your control.
+-					AI-powered features like auto captions also run in your browser using
+-					on-device models - no content ever leaves your device.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Accounts & Authentication</h2>
+-				<p>
+-					OpenCut does not currently offer user accounts, login, or Google
+-					sign-in.
+-				</p>
+-				<p>
+-					Because there is no account system today, we do not collect account
+-					emails, profile information, or OAuth identity data.
+-				</p>
+-				<p>
+-					Your projects are never stored on our servers. All project data,
+-					including names, thumbnails, and creation dates, is stored locally
+-					in your browser using IndexedDB.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Analytics</h2>
+-				<p>
+-					We use{" "}
+-					<a
+-						href="https://www.databuddy.cc"
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						Databuddy
+-					</a>{" "}
+-					for basic, anonymized visitor counts. We do not track clicks,
+-					interactions, or how you use the editor.
+-				</p>
+-				<p>
+-					No personal information is collected, no individual users are tracked,
+-					and no data that could identify you is stored.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Local Storage & Cookies</h2>
+-				<p>We use browser local storage and IndexedDB to:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>Save your projects locally on your device</li>
+-					<li>Remember your editor preferences and settings</li>
+-					<li>Store app state needed for the editor to work between sessions</li>
+-				</ul>
+-				<p>
+-					All data stays on your device and can be cleared at any time through
+-					your browser settings.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Third-Party Services</h2>
+-				<p>OpenCut integrates with these services:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>
+-						<strong>Vercel:</strong> For hosting and content delivery
+-					</li>
+-					<li>
+-						<strong>Databuddy:</strong> For anonymized analytics
+-					</li>
+-				</ul>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Your Rights</h2>
+-				<p>You have complete control over your data:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>No account is required to use OpenCut today</li>
+-					<li>Clear local storage to remove all saved projects</li>
+-					<li>Contact us with any privacy concerns</li>
+-				</ul>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Open Source Transparency</h2>
+-				<p>
+-					OpenCut is completely open source. You can review our code, see
+-					exactly how we handle data, and even self-host the application if you
+-					prefer.
+-				</p>
+-				<p>
+-					View our source code on{" "}
+-					<a
+-						href={SOCIAL_LINKS.github}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						GitHub
+-					</a>
+-					.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Contact Us</h2>
+-				<p>Questions about this privacy policy or how we handle your data?</p>
+-				<p>
+-					Open an issue on our{" "}
+-					<a
+-						href={`${SOCIAL_LINKS.github}/issues`}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						GitHub repository
+-					</a>
+-					, email us at{" "}
+-					<a
+-						href="mailto:oss@opencut.app"
+-						className="text-primary hover:underline"
+-					>
+-						oss@opencut.app
+-					</a>
+-					, or reach out on{" "}
+-					<a
+-						href={SOCIAL_LINKS.x}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						X (Twitter)
+-					</a>
+-					.
+-				</p>
+-			</section>
+-
+-			<Separator />
+-
+-			<p className="text-muted-foreground text-sm">
+-				Last updated: March 15, 2026
+-			</p>
+-		</BasePage>
+-	);
+-}
+diff --git a/apps/web/src/app/projects/page.tsx b/apps/web/src/app/projects/page.tsx
+index c39c4fd..6c2ab30 100644
+--- a/apps/web/src/app/projects/page.tsx
++++ b/apps/web/src/app/projects/page.tsx
+@@ -66,7 +66,6 @@ import { DeleteProjectDialog } from "@/project/components/delete-project-dialog"
+ import { ProjectInfoDialog } from "@/project/components/project-info-dialog";
+ import { RenameProjectDialog } from "@/project/components/rename-project-dialog";
+ import { cn } from "@/utils/ui";
+-import { ChangelogNotification } from "@/changelog/components/changelog-notification";
+ const formatProjectDuration = ({
+ 	duration,
+ }: {
+@@ -107,7 +106,6 @@ export default function ProjectsPage() {
+ 		<div className="bg-background min-h-screen">
+ 			<MigrationDialog />
+ 			<StoragePersistenceDialog />
+-			<ChangelogNotification />
+ 			<ProjectsHeader />
+ 			<ProjectsToolbar projectIds={projectsToDisplay.map((p) => p.id)} />
+ 			<main className="mx-auto px-4 pt-2 pb-6 flex flex-col gap-4">
+@@ -512,7 +510,7 @@ function NewProjectButton() {
+ 		const projectId = await editor.project.createNewProject({
+ 			name: "New project",
+ 		});
+-		router.push(`/editor/${projectId}`);
++		router.push(`/editor/open/?id=${projectId}`);
+ 	};
+ 
+ 	return (
+@@ -664,7 +662,7 @@ function ProjectItem({
+ 				className="size-5 shrink-0"
+ 			/>
+ 
+-			<Link href={`/editor/${project.id}`} className="flex-1 min-w-0">
++			<Link href={`/editor/open/?id=${project.id}`} className="flex-1 min-w-0">
+ 				{listRowContent}
+ 			</Link>
+ 
+@@ -689,7 +687,7 @@ function ProjectItem({
+ 					<div className="group relative">
+ 						{isGridView ? (
+ 							<>
+-								<Link href={`/editor/${project.id}`} className="block">
++								<Link href={`/editor/open/?id=${project.id}`} className="block">
+ 									{gridContent}
+ 								</Link>
+ 
+@@ -958,7 +956,7 @@ function EmptyState() {
+ 			const projectId = await editor.project.createNewProject({
+ 				name: "New project",
+ 			});
+-			router.push(`/editor/${projectId}`);
++			router.push(`/editor/open/?id=${projectId}`);
+ 		} catch (error) {
+ 			toast.error("Failed to create project", {
+ 				description:
+diff --git a/apps/web/src/app/roadmap/page.tsx b/apps/web/src/app/roadmap/page.tsx
+deleted file mode 100644
+index a0c3d9b..0000000
+--- a/apps/web/src/app/roadmap/page.tsx
++++ /dev/null
+@@ -1,146 +0,0 @@
+-import type { Metadata } from "next";
+-import { BasePage } from "@/app/base-page";
+-import { GitHubContributeSection } from "@/components/gitHub-contribute-section";
+-import { Badge } from "@/components/ui/badge";
+-import { ReactMarkdownWrapper } from "@/components/ui/react-markdown-wrapper";
+-import { cn } from "@/utils/ui";
+-
+-const LAST_UPDATED = "February 25, 2026";
+-
+-type StatusType = "complete" | "pending" | "default" | "info";
+-
+-interface Status {
+-	text: string;
+-	type: StatusType;
+-}
+-
+-interface RoadmapItem {
+-	title: string;
+-	description: string;
+-	status: Status;
+-}
+-
+-const roadmapItems: RoadmapItem[] = [
+-	{
+-		title: "Start",
+-		description:
+-			"This is where it all started. Repository created, initial project structure, and the vision for a free, open-source video editor. [Check out the first tweet](https://x.com/mazeincoding/status/1936706642512388188) to see where it started.",
+-		status: {
+-			text: "Completed",
+-			type: "complete",
+-		},
+-	},
+-	{
+-		title: "Core UI",
+-		description:
+-			"Build the foundation - main layout, header, sidebar, timeline container, and basic component structure. Not all functionality yet, but the UI framework that everything else builds on.",
+-		status: {
+-			text: "Completed",
+-			type: "complete",
+-		},
+-	},
+-	{
+-		title: "Essential functionality",
+-		description:
+-			"Everything that makes a video editor **useful**. Timeline interactivity, storage, effects, transitions, etc.",
+-		status: {
+-			text: "In progress",
+-			type: "pending",
+-		},
+-	},
+-	{
+-		title: "Native app (mobile/desktop)",
+-		description:
+-			"Native OpenCut apps for Mac, Windows, Linux, and iOS/Android.",
+-		status: {
+-			text: "Not started",
+-			type: "default",
+-		},
+-	},
+-];
+-
+-export const metadata: Metadata = {
+-	title: "Roadmap - OpenCut",
+-	description:
+-		"See what's coming next for OpenCut - the free, open-source video editor that respects your privacy.",
+-	openGraph: {
+-		title: "OpenCut Roadmap - What's Coming Next",
+-		description:
+-			"See what's coming next for OpenCut - the free, open-source video editor that respects your privacy.",
+-		type: "website",
+-		images: [
+-			{
+-				url: "/open-graph/roadmap.jpg",
+-				width: 1200,
+-				height: 630,
+-				alt: "OpenCut Roadmap",
+-			},
+-		],
+-	},
+-	twitter: {
+-		card: "summary_large_image",
+-		title: "OpenCut Roadmap - What's Coming Next",
+-		description:
+-			"See what's coming next for OpenCut - the free, open-source video editor that respects your privacy.",
+-		images: ["/open-graph/roadmap.jpg"],
+-	},
+-};
+-
+-export default function RoadmapPage() {
+-	return (
+-		<BasePage
+-			title="Roadmap"
+-			description={`What's coming next for OpenCut (last updated: ${LAST_UPDATED})`}
+-		>
+-			<div className="mx-auto flex max-w-4xl flex-col gap-16">
+-				<div className="flex flex-col gap-6">
+-					{roadmapItems.map((item, index) => (
+-						<RoadmapItem key={item.title} item={item} index={index} />
+-					))}
+-				</div>
+-				<GitHubContributeSection
+-					title="Want to help?"
+-					description="OpenCut is open source and built by the community. Every contribution,
+-          no matter how small, helps us build the best free video editor
+-          possible."
+-				/>
+-			</div>
+-		</BasePage>
+-	);
+-}
+-
+-function RoadmapItem({ item, index }: { item: RoadmapItem; index: number }) {
+-	return (
+-		<div className="flex flex-col gap-2">
+-			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-lg font-medium">
+-				<span className="leading-normal select-none">{index + 1}</span>
+-				<h3>{item.title}</h3>
+-				<StatusBadge status={item.status} className="ml-1" />
+-			</div>
+-			<div className="text-foreground/70 leading-relaxed">
+-				<ReactMarkdownWrapper>{item.description}</ReactMarkdownWrapper>
+-			</div>
+-		</div>
+-	);
+-}
+-
+-function StatusBadge({
+-	status,
+-	className,
+-}: {
+-	status: Status;
+-	className?: string;
+-}) {
+-	return (
+-		<Badge
+-			className={cn("shadow-none", className, {
+-				"bg-green-500! text-white": status.type === "complete",
+-				"bg-yellow-500! text-white": status.type === "pending",
+-				"bg-blue-500! text-white": status.type === "info",
+-				"bg-foreground/10! text-accent-foreground": status.type === "default",
+-			})}
+-		>
+-			{status.text}
+-		</Badge>
+-	);
+-}
+diff --git a/apps/web/src/app/robots.ts b/apps/web/src/app/robots.ts
+deleted file mode 100644
+index 1b1ca86..0000000
+--- a/apps/web/src/app/robots.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import type { MetadataRoute } from "next";
+-import { SITE_URL } from "@/site/brand";
+-
+-export default function robots(): MetadataRoute.Robots {
+-	return {
+-		rules: {
+-			userAgent: "*",
+-			allow: "/",
+-			disallow: ["/_next/", "/projects/", "/editor/"],
+-		},
+-		sitemap: `${SITE_URL}/sitemap.xml`,
+-	};
+-}
+diff --git a/apps/web/src/app/rss.xml/route.ts b/apps/web/src/app/rss.xml/route.ts
+deleted file mode 100644
+index d4e9570..0000000
+--- a/apps/web/src/app/rss.xml/route.ts
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import { Feed } from "feed";
+-import { getPosts } from "@/blog/query";
+-import { SITE_INFO, SITE_URL } from "@/site/brand";
+-
+-export async function GET() {
+-	try {
+-		const { posts } = await getPosts();
+-
+-		const feed = new Feed({
+-			title: `${SITE_INFO.title} Blog`,
+-			description: SITE_INFO.description,
+-			id: `${SITE_URL}`,
+-			link: `${SITE_URL}/blog/`,
+-			language: "en",
+-			image: `${SITE_INFO.openGraphImage}`,
+-			favicon: `${SITE_INFO.favicon}`,
+-			copyright: `All rights reserved ${new Date().getFullYear()}, ${
+-				SITE_INFO.title
+-			}`,
+-		});
+-
+-		for (const post of posts) {
+-			feed.addItem({
+-				title: post.title,
+-				id: `${SITE_URL}/blog/${post.slug}`,
+-				link: `${SITE_URL}/blog/${post.slug}`,
+-				description: post.description,
+-				author: post.authors.map((author) => ({
+-					name: author.name,
+-				})),
+-				date: new Date(post.publishedAt),
+-				image: post.coverImage || SITE_INFO.openGraphImage,
+-			});
+-		}
+-
+-		return new Response(feed.rss2(), {
+-			headers: {
+-				"Content-Type": "text/xml",
+-				"Cache-Control": "public, max-age=86400, stale-while-revalidate",
+-			},
+-		});
+-	} catch (error) {
+-		console.error("Error generating RSS feed", error);
+-		return new Response("Internal Server Error", { status: 500 });
+-	}
+-}
+diff --git a/apps/web/src/app/sitemap.ts b/apps/web/src/app/sitemap.ts
+deleted file mode 100644
+index 73b4180..0000000
+--- a/apps/web/src/app/sitemap.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-import { SITE_URL } from "@/site/brand";
+-import { getPosts } from "@/blog/query";
+-import type { MetadataRoute } from "next";
+-
+-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+-	const data = await getPosts();
+-
+-	const postPages: MetadataRoute.Sitemap =
+-		data?.posts?.map((post) => ({
+-			url: `${SITE_URL}/blog/${post.slug}`,
+-			lastModified: new Date(post.publishedAt),
+-			changeFrequency: "weekly",
+-			priority: 0.8,
+-		})) ?? [];
+-
+-	return [
+-		{
+-			url: SITE_URL,
+-			lastModified: new Date(),
+-			changeFrequency: "weekly",
+-			priority: 1,
+-		},
+-		{
+-			url: `${SITE_URL}/contributors`,
+-			lastModified: new Date(),
+-			changeFrequency: "daily",
+-			priority: 0.5,
+-		},
+-		{
+-			url: `${SITE_URL}/roadmap`,
+-			lastModified: new Date(),
+-			changeFrequency: "weekly",
+-			priority: 1,
+-		},
+-		{
+-			url: `${SITE_URL}/privacy`,
+-			lastModified: new Date(),
+-			changeFrequency: "monthly",
+-			priority: 0.5,
+-		},
+-		{
+-			url: `${SITE_URL}/terms`,
+-			lastModified: new Date(),
+-			changeFrequency: "monthly",
+-			priority: 0.5,
+-		},
+-		{
+-			url: `${SITE_URL}/why-not-capcut`,
+-			lastModified: new Date(),
+-			changeFrequency: "yearly",
+-			priority: 1,
+-		},
+-		{
+-			url: `${SITE_URL}/blog`,
+-			lastModified: new Date(),
+-			changeFrequency: "weekly",
+-			priority: 1,
+-		},
+-		...postPages,
+-	];
+-}
+diff --git a/apps/web/src/app/sponsors/page.tsx b/apps/web/src/app/sponsors/page.tsx
+deleted file mode 100644
+index 510419f..0000000
+--- a/apps/web/src/app/sponsors/page.tsx
++++ /dev/null
+@@ -1,86 +0,0 @@
+-import type { Metadata } from "next";
+-import Image from "next/image";
+-import Link from "next/link";
+-import { BasePage } from "@/app/base-page";
+-import { Card, CardContent } from "@/components/ui/card";
+-import { SPONSORS, type Sponsor } from "@/site/sponsors";
+-import { HugeiconsIcon } from "@hugeicons/react";
+-import { LinkSquare02Icon } from "@hugeicons/core-free-icons";
+-import { cn } from "@/utils/ui";
+-
+-export const metadata: Metadata = {
+-	title: "Sponsors - OpenCut",
+-	description:
+-		"Support OpenCut and help us build the future of free and open-source video editing.",
+-	openGraph: {
+-		title: "Sponsors - OpenCut",
+-		description:
+-			"Support OpenCut and help us build the future of free and open-source video editing.",
+-		type: "website",
+-	},
+-};
+-
+-export default function SponsorsPage() {
+-	return (
+-		<BasePage>
+-			<div className="flex flex-col gap-8 text-center">
+-				<h1 className="text-5xl font-bold tracking-tight md:text-6xl">
+-					Sponsors
+-				</h1>
+-				<p className="text-muted-foreground mx-auto max-w-2xl text-xl leading-relaxed text-pretty">
+-					Support OpenCut and help us build the future of privacy-first video
+-					editing.
+-				</p>
+-			</div>
+-			<SponsorsGrid />
+-		</BasePage>
+-	);
+-}
+-
+-function SponsorsGrid() {
+-	return (
+-		<div className="grid gap-6 sm:grid-cols-2">
+-			{SPONSORS.map((sponsor) => (
+-				<SponsorCard key={sponsor.name} sponsor={sponsor} />
+-			))}
+-		</div>
+-	);
+-}
+-
+-function SponsorCard({ sponsor }: { sponsor: Sponsor }) {
+-	return (
+-		<Link
+-			href={sponsor.url}
+-			target="_blank"
+-			rel="noopener noreferrer"
+-			className="size-full"
+-		>
+-			<Card className="h-full">
+-				<CardContent className="flex h-full flex-col justify-center gap-8 p-8">
+-					<Image
+-						src={sponsor.logo}
+-						alt={`${sponsor.name} logo`}
+-						width={50}
+-						height={50}
+-						className={cn(
+-							"object-contain",
+-							sponsor.invertOnDark && "invert-0 dark:invert",
+-						)}
+-					/>
+-					<div className="flex flex-col gap-2">
+-						<div className="flex items-center gap-2">
+-							<h3 className="text-xl font-semibold group-hover:underline">
+-								{sponsor.name}
+-							</h3>
+-							<HugeiconsIcon
+-								icon={LinkSquare02Icon}
+-								className="text-muted-foreground size-4"
+-							/>
+-						</div>
+-						<p className="text-muted-foreground">{sponsor.description}</p>
+-					</div>
+-				</CardContent>
+-			</Card>
+-		</Link>
+-	);
+-}
+diff --git a/apps/web/src/app/terms/page.tsx b/apps/web/src/app/terms/page.tsx
+deleted file mode 100644
+index 5f2e042..0000000
+--- a/apps/web/src/app/terms/page.tsx
++++ /dev/null
+@@ -1,245 +0,0 @@
+-import type { Metadata } from "next";
+-import { BasePage } from "@/app/base-page";
+-import {
+-	Accordion,
+-	AccordionContent,
+-	AccordionItem,
+-	AccordionTrigger,
+-} from "@/components/ui/accordion";
+-import { Separator } from "@/components/ui/separator";
+-import { SOCIAL_LINKS } from "@/site/social";
+-
+-export const metadata: Metadata = {
+-	title: "Terms of Service - OpenCut",
+-	description:
+-		"OpenCut's Terms of Service. Fair, transparent terms for our free and open-source video editor.",
+-	openGraph: {
+-		title: "Terms of Service - OpenCut",
+-		description:
+-			"OpenCut's Terms of Service. Fair, transparent terms for our free and open-source video editor.",
+-		type: "website",
+-	},
+-};
+-
+-export default function TermsPage() {
+-	return (
+-		<BasePage
+-			title="Terms of service"
+-			description="Fair and transparent terms for our free, open-source video editor. Contact us if you have any questions."
+-		>
+-			<Accordion type="single" collapsible className="w-full">
+-				<AccordionItem
+-					value="quick-summary"
+-					className="rounded-2xl border px-5"
+-				>
+-					<AccordionTrigger className="no-underline!">
+-						Quick summary
+-					</AccordionTrigger>
+-					<AccordionContent>
+-						<h3 className="mb-3 text-lg font-medium">
+-							You own your content, we own nothing.
+-						</h3>
+-						<ol className="list-decimal space-y-2 pl-6">
+-							<li>
+-								Everything runs locally in your browser - nothing is ever
+-								uploaded to our servers
+-							</li>
+-							<li>
+-								We never claim ownership of your content
+-							</li>
+-							<li>
+-								Free for personal and commercial use with no watermarks or
+-								restrictions
+-							</li>
+-							<li>
+-								You&apos;re responsible for how you use it - don&apos;t break
+-								the law
+-							</li>
+-							<li>
+-								Service provided &quot;as is&quot; - we can&apos;t guarantee
+-								perfect uptime
+-							</li>
+-							<li>
+-								Open source means you can review our code and self-host if
+-								needed
+-							</li>
+-							<li>
+-								No account required - your exported videos are always yours
+-							</li>
+-						</ol>
+-						<p className="mt-4">
+-							Questions? Email us at{" "}
+-							<a
+-								href="mailto:oss@opencut.app"
+-								className="text-primary hover:underline"
+-							>
+-								oss@opencut.app
+-							</a>
+-						</p>
+-					</AccordionContent>
+-				</AccordionItem>
+-			</Accordion>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Your Content, Your Rights</h2>
+-				<p>
+-					<strong>You own everything you create.</strong> All editing and
+-					processing happens locally on your device. We never see, store, or
+-					have access to your files. We make no claims to ownership, licensing,
+-					or rights over your videos, projects, or any content you create using
+-					OpenCut.
+-				</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>
+-						Your content never leaves your device
+-					</li>
+-					<li>You retain all intellectual property rights to your content</li>
+-					<li>You can export and use your content however you choose</li>
+-					<li>No watermarks, no licensing restrictions from OpenCut</li>
+-				</ul>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">How You Can Use OpenCut</h2>
+-				<p>OpenCut is free for personal and commercial use. You can:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>
+-						Create videos for personal, educational, or commercial purposes
+-					</li>
+-					<li>Use OpenCut for client work and paid projects</li>
+-					<li>Share and distribute videos created with OpenCut</li>
+-					<li>
+-						Modify and distribute the OpenCut software (under MIT license)
+-					</li>
+-				</ul>
+-				<p>
+-					You&apos;re responsible for how you use OpenCut and the content you
+-					create. Don&apos;t use it for anything illegal in your jurisdiction.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">AI Features</h2>
+-				<p>
+-					AI features like auto captions run entirely in your browser using
+-					on-device models. No content is uploaded to any server. These features
+-					are optional - you can use OpenCut without them.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Service</h2>
+-				<p>
+-					OpenCut does not currently require an account. The service is provided
+-					&quot;as is&quot; without warranties. While we strive for
+-					reliability, we can&apos;t guarantee uninterrupted service.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Open Source Benefits</h2>
+-				<p>Because OpenCut is open source, you have additional rights:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>Review our code to see exactly how we handle your data</li>
+-					<li>Self-host OpenCut on your own servers</li>
+-					<li>Modify the software to suit your needs</li>
+-					<li>Contribute improvements back to the community</li>
+-				</ul>
+-				<p>
+-					View our source code and license on{" "}
+-					<a
+-						href={SOCIAL_LINKS.github}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						GitHub
+-					</a>
+-					.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Limitations and Liability</h2>
+-				<p>
+-					OpenCut is provided free of charge. To the extent permitted by law:
+-				</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>We&apos;re not liable for any loss of data or content</li>
+-					<li>
+-						Projects are stored in your browser and may be lost if you clear
+-						browser data
+-					</li>
+-					<li>We&apos;re not responsible for how you use the service</li>
+-					<li>Our liability is limited to the maximum extent allowed by law</li>
+-				</ul>
+-				<p>
+-					Since your content stays on your device, we have no way to recover
+-					lost projects. Consider exporting important videos when finished
+-					editing.
+-				</p>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Service Changes</h2>
+-				<p>We may update OpenCut and these terms:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>We&apos;ll notify you of significant changes to these terms</li>
+-					<li>Continued use means you accept any updates</li>
+-					<li>You can always self-host an older version if you prefer</li>
+-					<li>Major changes will be discussed with the community on GitHub</li>
+-				</ul>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Stopping Use</h2>
+-				<p>You can stop using OpenCut at any time:</p>
+-				<ul className="list-disc space-y-2 pl-6">
+-					<li>Clear your browser data to remove local projects</li>
+-				</ul>
+-			</section>
+-
+-			<section className="flex flex-col gap-3">
+-				<h2 className="text-2xl font-semibold">Contact Us</h2>
+-				<p>Questions about these terms or need to report an issue?</p>
+-				<p>
+-					Contact us through our{" "}
+-					<a
+-						href={`${SOCIAL_LINKS.github}/issues`}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						GitHub repository
+-					</a>
+-					, email us at{" "}
+-					<a
+-						href="mailto:oss@opencut.app"
+-						className="text-primary hover:underline"
+-					>
+-						oss@opencut.app
+-					</a>
+-					, or reach out on{" "}
+-					<a
+-						href={SOCIAL_LINKS.x}
+-						target="_blank"
+-						rel="noopener noreferrer"
+-						className="text-primary hover:underline"
+-					>
+-						X (Twitter)
+-					</a>
+-					.
+-				</p>
+-				<p>
+-					These terms are governed by applicable law in your jurisdiction. We
+-					prefer to resolve disputes through friendly discussion in our
+-					open-source community.
+-				</p>
+-			</section>
+-			<Separator />
+-			<p className="text-muted-foreground text-sm">
+-				Last updated: March 15, 2026
+-			</p>
+-		</BasePage>
+-	);
+-}
+diff --git a/apps/web/src/auth/client.ts b/apps/web/src/auth/client.ts
+deleted file mode 100644
+index 58be51c..0000000
+--- a/apps/web/src/auth/client.ts
++++ /dev/null
+@@ -1,6 +0,0 @@
+-import { createAuthClient } from "better-auth/react";
+-import { webEnv } from "@/env/web";
+-
+-export const { signIn, signUp, useSession } = createAuthClient({
+-	baseURL: webEnv.NEXT_PUBLIC_SITE_URL,
+-});
+diff --git a/apps/web/src/auth/rate-limit.ts b/apps/web/src/auth/rate-limit.ts
+deleted file mode 100644
+index c10c381..0000000
+--- a/apps/web/src/auth/rate-limit.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import { Ratelimit } from "@upstash/ratelimit";
+-import { Redis } from "@upstash/redis";
+-import { webEnv } from "@/env/web";
+-
+-const redis = new Redis({
+-	url: webEnv.UPSTASH_REDIS_REST_URL,
+-	token: webEnv.UPSTASH_REDIS_REST_TOKEN,
+-});
+-
+-export const baseRateLimit = new Ratelimit({
+-	redis,
+-	limiter: Ratelimit.slidingWindow(100, "1 m"), // 100 requests per minute
+-	analytics: true,
+-	prefix: "rate-limit",
+-});
+-
+-export async function checkRateLimit({ request }: { request: Request }) {
+-	const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
+-	const { success } = await baseRateLimit.limit(ip);
+-	return { success, limited: !success };
+-}
+diff --git a/apps/web/src/auth/server.ts b/apps/web/src/auth/server.ts
+deleted file mode 100644
+index 5e49387..0000000
+--- a/apps/web/src/auth/server.ts
++++ /dev/null
+@@ -1,43 +0,0 @@
+-import { betterAuth, type RateLimit } from "better-auth";
+-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+-import { Redis } from "@upstash/redis";
+-import { db } from "@/db";
+-import { webEnv } from "@/env/web";
+-
+-const redis = new Redis({
+-	url: webEnv.UPSTASH_REDIS_REST_URL,
+-	token: webEnv.UPSTASH_REDIS_REST_TOKEN,
+-});
+-
+-export const auth = betterAuth({
+-	database: drizzleAdapter(db, {
+-		provider: "pg",
+-		usePlural: true,
+-	}),
+-	secret: webEnv.BETTER_AUTH_SECRET,
+-	user: {
+-		deleteUser: {
+-			enabled: true,
+-		},
+-	},
+-	emailAndPassword: {
+-		enabled: true,
+-	},
+-	rateLimit: {
+-		storage: "secondary-storage",
+-		customStorage: {
+-			get: async (key) => {
+-				const value = await redis.get(key);
+-				return value as RateLimit | undefined;
+-			},
+-			set: async (key, value) => {
+-				await redis.set(key, value);
+-			},
+-		},
+-	},
+-	baseURL: webEnv.NEXT_PUBLIC_SITE_URL,
+-	appName: "OpenCut",
+-	trustedOrigins: [webEnv.NEXT_PUBLIC_SITE_URL],
+-});
+-
+-export type Auth = typeof auth;
+diff --git a/apps/web/src/db/index.ts b/apps/web/src/db/index.ts
+deleted file mode 100644
+index 29e3ffd..0000000
+--- a/apps/web/src/db/index.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import { drizzle } from "drizzle-orm/postgres-js";
+-import postgres from "postgres";
+-import * as schema from "./schema";
+-import { webEnv } from "@/env/web";
+-
+-let _db: ReturnType<typeof drizzle> | null = null;
+-
+-function getDb() {
+-	if (!_db) {
+-		const client = postgres(webEnv.DATABASE_URL);
+-		_db = drizzle(client, { schema });
+-	}
+-
+-	return _db;
+-}
+-
+-export const db = getDb();
+-
+-export * from "./schema";
+diff --git a/apps/web/src/db/schema.ts b/apps/web/src/db/schema.ts
+deleted file mode 100644
+index 8f8be24..0000000
+--- a/apps/web/src/db/schema.ts
++++ /dev/null
+@@ -1,70 +0,0 @@
+-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+-
+-export const users = pgTable("users", {
+-	id: text("id").primaryKey(),
+-
+-	// todo: implement fully anonymous sign-in for privacy
+-	// we don't have any auth flows currently so this is fine for now
+-	name: text("name").notNull(),
+-	email: text("email").notNull().unique(),
+-	emailVerified: boolean("email_verified").default(false).notNull(),
+-	image: text("image"),
+-	createdAt: timestamp("created_at")
+-		.$defaultFn(() => /* @__PURE__ */ new Date())
+-		.notNull(),
+-	updatedAt: timestamp("updated_at")
+-		.$defaultFn(() => /* @__PURE__ */ new Date())
+-		.notNull(),
+-}).enableRLS();
+-
+-export const sessions = pgTable("sessions", {
+-	id: text("id").primaryKey(),
+-	expiresAt: timestamp("expires_at").notNull(),
+-	token: text("token").notNull().unique(),
+-	createdAt: timestamp("created_at").notNull(),
+-	updatedAt: timestamp("updated_at").notNull(),
+-	ipAddress: text("ip_address"),
+-	userAgent: text("user_agent"),
+-	userId: text("user_id")
+-		.notNull()
+-		.references(() => users.id, { onDelete: "cascade" }),
+-}).enableRLS();
+-
+-export const accounts = pgTable("accounts", {
+-	id: text("id").primaryKey(),
+-	accountId: text("account_id").notNull(),
+-	providerId: text("provider_id").notNull(),
+-	userId: text("user_id")
+-		.notNull()
+-		.references(() => users.id, { onDelete: "cascade" }),
+-	accessToken: text("access_token"),
+-	refreshToken: text("refresh_token"),
+-	idToken: text("id_token"),
+-	accessTokenExpiresAt: timestamp("access_token_expires_at"),
+-	refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+-	scope: text("scope"),
+-	password: text("password"),
+-	createdAt: timestamp("created_at").notNull(),
+-	updatedAt: timestamp("updated_at").notNull(),
+-}).enableRLS();
+-
+-export const feedback = pgTable("feedback", {
+-	id: text("id").primaryKey(),
+-	message: text("message").notNull(),
+-	createdAt: timestamp("created_at")
+-		.$defaultFn(() => new Date())
+-		.notNull(),
+-});
+-
+-export const verifications = pgTable("verifications", {
+-	id: text("id").primaryKey(),
+-	identifier: text("identifier").notNull(),
+-	value: text("value").notNull(),
+-	expiresAt: timestamp("expires_at").notNull(),
+-	createdAt: timestamp("created_at").$defaultFn(
+-		() => /* @__PURE__ */ new Date(),
+-	),
+-	updatedAt: timestamp("updated_at").$defaultFn(
+-		() => /* @__PURE__ */ new Date(),
+-	),
+-}).enableRLS();
+diff --git a/apps/web/src/feedback/queries.ts b/apps/web/src/feedback/queries.ts
+deleted file mode 100644
+index 121c6fe..0000000
+--- a/apps/web/src/feedback/queries.ts
++++ /dev/null
+@@ -1,14 +0,0 @@
+-import { db, feedback } from "@/db";
+-import { generateUUID } from "@/utils/id";
+-import type { FeedbackEntry, SubmitFeedbackInput } from "./types";
+-
+-export async function submitFeedback({
+-	message,
+-}: SubmitFeedbackInput): Promise<FeedbackEntry> {
+-	const id = generateUUID();
+-	const now = new Date();
+-
+-	await db.insert(feedback).values({ id, message, createdAt: now });
+-
+-	return { id, message, createdAt: now.toISOString() };
+-}

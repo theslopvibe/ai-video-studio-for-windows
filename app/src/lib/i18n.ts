@@ -18,6 +18,7 @@ const D = {
   scenes_help: { el: "κάθε σκηνή γίνεται ξεχωριστό video (s01, s02…) με τις ίδιες ρυθμίσεις", en: "each scene becomes its own video (s01, s02…) with the same settings" },
   setup_btn: { el: "Δημιούργησε το endpoint αυτόματα", en: "Create the endpoint automatically" },
   setup_confirm: { el: "Θα δημιουργηθεί στο λογαριασμό σου Vast ένα endpoint «comfyui-json» με το επίσημο template Wan 2.2, ρυθμισμένο να κατεβαίνει στο μηδέν (δεν πληρώνεις όσο δεν παράγεις video).\n\nΤο Vast μπορεί να ξεκινήσει για λίγα λεπτά έναν δοκιμαστικό worker για benchmark, που κοστίζει λίγα σεντς.\n\nΣυνέχεια;", en: "A “comfyui-json” endpoint will be created in your Vast account using the official Wan 2.2 template, set to scale to zero (no cost while you don't generate).\n\nVast may start a test worker for a few minutes to benchmark, costing a few cents.\n\nContinue?" },
+  nav_editor: { el: "Επεξεργασία video", en: "Video editor" },
   nav_logs: { el: "Logs", en: "Logs" },
   logs_intro: { el: "Εδώ καταγράφεται ό,τι κάνει η εφαρμογή, με ημερομηνία και ώρα. Αν κάτι δεν δουλεύει: πάτα «Φτιάξε αναφορά» και στείλε μας το αρχείο που θα δημιουργηθεί. Δεν περιέχει κωδικούς ή API keys.", en: "Everything the app does is recorded here with date and time. If something doesn't work: press “Create report” and send us the file it creates. It contains no passwords or API keys." },
   logs_report: { el: "Φτιάξε αναφορά για αποστολή", en: "Create report to send" },

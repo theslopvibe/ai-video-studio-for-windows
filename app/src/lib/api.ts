@@ -74,6 +74,7 @@ export const api = {
   chatDelete: (id: string) => invoke<void>("chat_delete", { id }),
   chatMessages: (id: string) => invoke<ChatMessage[]>("chat_messages", { id }),
   chatMessageDelete: (id: string) => invoke<void>("chat_message_delete", { id }),
+  editorUrl: () => invoke<string | null>("editor_url"),
   chatSend: (id: string, text: string) => invoke<ChatMessage[]>("chat_send", { id, text }),
   hardwareScan: () => invoke<Hardware>("hardware_scan"),
   localStatus: () => invoke<LocalStatus>("local_status"),

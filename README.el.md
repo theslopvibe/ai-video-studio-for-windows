@@ -89,3 +89,7 @@ Windows εφαρμογή που φτιάχνει AI videos από prompt (ελλ
 ## Για προγραμματιστές
 
 Tauri 2 (Rust) + Svelte 5. `cd app && npm install && npm run tauri dev`. Installer: `npm run tauri build` → `app/src-tauri/target/release/bundle/nsis/`. Tests: `cd app/src-tauri && cargo test` (`-- --ignored` για το πραγματικό Claude Code). Πρωτόκολλο Vast και αποφάσεις: `PLAN.md`.
+
+## Επεξεργασία video
+
+Η σελίδα **Επεξεργασία video** είναι το [OpenCut](https://github.com/opencut-app/opencut-classic) (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut), ενσωματωμένο στην εφαρμογή και χωρίς internet: timeline, πολλά tracks, ήχος, κείμενο, εφέ, export. Δεν είναι δικό μας έργο· αλλάζουμε μόνο τον τρόπο build (δες [`editor/NOTICE.md`](editor/NOTICE.md)). Χτίζεται με `python editor/build.py`.

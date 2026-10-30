@@ -62,3 +62,7 @@ Issues and pull requests are welcome. Please keep the interface text in both lan
 ## License
 
 MIT, see [LICENSE](LICENSE). The AI models you download have their own licenses; the app shows each model's license before you install it.
+
+## Video editor
+
+The **Video editor** page is [OpenCut](https://github.com/opencut-app/opencut-classic) (open source, MIT license, by the OpenCut contributors), built into the app and running fully offline: timeline, multiple tracks, audio, text, effects, export. It is not our work; we only change how it is built (see [`editor/NOTICE.md`](editor/NOTICE.md)). Build it with `python editor/build.py`.

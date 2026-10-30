@@ -9,6 +9,7 @@
   import Models from "$lib/Models.svelte";
   import Settings from "$lib/Settings.svelte";
   import Guide from "$lib/Guide.svelte";
+  import Editor from "$lib/Editor.svelte";
   import Logs from "$lib/Logs.svelte";
   import Wizard from "$lib/Wizard.svelte";
   import Chat from "$lib/Chat.svelte";
@@ -16,7 +17,7 @@
   let fatal = $state("");
   onMount(() => { S.init().catch((e) => (fatal = String(e))); });
 
-  const nav: { id: Page; key: "nav_generate" | "nav_chat" | "nav_queue" | "nav_library" | "nav_projects" | "nav_gpu" | "nav_models" | "nav_guide" | "nav_logs" | "nav_settings"; icon: string }[] = [
+  const nav: { id: Page; key: "nav_generate" | "nav_chat" | "nav_queue" | "nav_library" | "nav_projects" | "nav_gpu" | "nav_models" | "nav_guide" | "nav_editor" | "nav_logs" | "nav_settings"; icon: string }[] = [
     { id: "generate", key: "nav_generate", icon: "✦" },
     { id: "chat", key: "nav_chat", icon: "✎" },
     { id: "queue", key: "nav_queue", icon: "☰" },
@@ -24,6 +25,7 @@
     { id: "projects", key: "nav_projects", icon: "▤" },
     { id: "gpu", key: "nav_gpu", icon: "⚡" },
     { id: "models", key: "nav_models", icon: "◈" },
+    { id: "editor", key: "nav_editor", icon: "✂" },
     { id: "guide", key: "nav_guide", icon: "?" },
     { id: "logs", key: "nav_logs", icon: "≡" },
     { id: "settings", key: "nav_settings", icon: "⚙" },
@@ -66,6 +68,7 @@
       {:else if S.page === "gpu"}<Gpu />
       {:else if S.page === "models"}<Models />
       {:else if S.page === "guide"}<Guide />
+      {:else if S.page === "editor"}<Editor />
       {:else if S.page === "logs"}<Logs />
       {:else}<Settings />{/if}
     </main>

@@ -256,6 +256,10 @@
     <p>{S.lang === "el"
       ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
       : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>
+    <p class="small dim">{S.lang === "el"
+      ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του."
+      : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works."}
+      <a href="https://github.com/opencut-app/opencut-classic" target="_blank" rel="noreferrer">github.com/opencut-app/opencut-classic</a></p>
     <div class="row">
       <a class="btn" href="https://ko-fi.com/slopvibe" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a>
       <a class="btn ghost" href="https://theslopvibe.com/free-apps" target="_blank" rel="noreferrer">{S.lang === "el" ? "Περισσότερες δωρεάν εφαρμογές" : "More free apps"}</a>

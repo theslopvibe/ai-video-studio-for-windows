@@ -14,3 +14,7 @@
 ## 0.1.0
 
 - First version: Vast.ai Serverless with Wan 2.2, queue, library, projects, image to video, models from Hugging Face, logs and reports.
+
+## Unreleased
+- Create video with chat: studio chats queue videos from confirm cards; ChatGPT (Codex CLI) and Gemini (Gemini CLI) subscriptions; Z.ai GLM Coding Plan.
+- Video editor page: OpenCut (MIT) bundled and served locally, offline. Credits in About, README, `editor/NOTICE.md`.

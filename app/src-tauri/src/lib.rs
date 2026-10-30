@@ -5,6 +5,7 @@ mod hf;
 mod hosted;
 mod log;
 mod db;
+mod editor;
 mod llm;
 mod local;
 mod provision;
@@ -731,6 +732,11 @@ async fn chat_send(st: State<'_, AppState>, id: String, text: String) -> R<Vec<c
     chat::send(&st, &id, &text).await
 }
 
+#[tauri::command]
+fn editor_url() -> Option<String> {
+    editor::url()
+}
+
 // ---- local generation (setup wizard)
 
 #[tauri::command]
@@ -829,7 +835,13 @@ pub fn run() {
             });
             let h = app.handle().clone();
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
-            tauri::async_runtime::spawn(api::serve(h));
+            tauri::async_runtime::spawn(api::serve(h.clone()));
+            let mut editor_dir = h.path().resource_dir().map(|d| d.join("editor")).unwrap_or_default();
+            if !editor_dir.exists() {
+                // `tauri dev` fallback
+                editor_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("editor-dist");
+            }
+            tauri::async_runtime::spawn(editor::serve(editor_dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -840,7 +852,7 @@ pub fn run() {
             gpu_offers, apply_gpus, install_on_workers, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
-            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send
+            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

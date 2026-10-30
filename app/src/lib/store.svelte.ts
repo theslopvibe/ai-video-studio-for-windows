@@ -3,7 +3,7 @@ import { api, type Bootstrap, type Job, type Project, type Workflow } from "./ap
 import { tr, type Key, type Lang } from "./i18n";
 
 export type Theme = "dark" | "light" | "system";
-export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "gpu" | "models" | "guide" | "logs" | "settings";
+export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "gpu" | "models" | "guide" | "editor" | "logs" | "settings";
 
 class Store {
   ready = $state(false);

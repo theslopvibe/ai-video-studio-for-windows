@@ -43,7 +43,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "workflows/*": "workflows/"
+      "workflows/*": "workflows/",
+      "editor-dist": "editor"
     },
     "shortDescription": "Free open-source AI video and image studio",
     "windows": {
