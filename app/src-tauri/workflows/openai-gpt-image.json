@@ -1,0 +1,57 @@
+{
+ "meta": {
+  "id": "openai-gpt-image",
+  "name_en": "Text → Image: GPT Image 2.5 (OpenAI)",
+  "name_el": "Κείμενο → Εικόνα: GPT Image 2.5 (OpenAI)",
+  "desc_en": "Paid, billed by OpenAI per image (roughly $0.05 at medium quality). Needs an OpenAI API key.",
+  "desc_el": "Επί πληρωμής, χρεώνεται από την OpenAI ανά εικόνα (περίπου $0.05 σε μεσαία ποιότητα). Θέλει κλειδί OpenAI.",
+  "good_en": "Text inside images (posters, logos, signs), following long detailed prompts, precise results.",
+  "good_el": "Κείμενο μέσα σε εικόνα (αφίσες, λογότυπα, πινακίδες), μακροσκελή prompts, ακριβές αποτέλεσμα.",
+  "license": "paid",
+  "kind": "t2i",
+  "provider": "openai",
+  "model": "gpt-image-2.5-flare",
+  "request": {
+   "prompt": "{prompt}",
+   "size": "{width}x{height}",
+   "quality": "medium",
+   "n": 1
+  },
+  "est_usd": 0.05,
+  "priority": 300,
+  "vram_gb": 0,
+  "est_sec": 40,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 64
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 64
+   }
+  ]
+ },
+ "workflow": {}
+}

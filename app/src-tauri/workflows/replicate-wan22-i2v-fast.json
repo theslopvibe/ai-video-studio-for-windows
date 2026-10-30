@@ -1,0 +1,48 @@
+{
+ "meta": {
+  "id": "replicate-wan22-i2v-fast",
+  "name_en": "Image → Video: Wan 2.2 fast (Replicate)",
+  "name_el": "Εικόνα → Video: Wan 2.2 fast (Replicate)",
+  "desc_en": "Hosted Wan 2.2 image-to-video, a few cents per clip. Needs a Replicate token.",
+  "desc_el": "Wan 2.2 εικόνα→video στο Replicate, λίγα cents ανά clip. Θέλει token Replicate.",
+  "kind": "i2v",
+  "provider": "replicate",
+  "model": "wan-video/wan-2.2-i2v-fast",
+  "request": {
+   "prompt": "{prompt}",
+   "image": "data:image/jpeg;base64,{image}",
+   "seed": "{seed}"
+  },
+  "est_usd": 0.05,
+  "priority": 151,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "image",
+    "type": "image",
+    "label_en": "Start image",
+    "label_el": "Εικόνα εκκίνησης",
+    "required": true
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

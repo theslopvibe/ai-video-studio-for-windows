@@ -1,0 +1,52 @@
+{
+ "meta": {
+  "id": "gemini-nano-banana",
+  "name_en": "Text → Image: Nano Banana 2.1 (Google Gemini)",
+  "name_el": "Κείμενο → Εικόνα: Nano Banana 2.1 (Google Gemini)",
+  "desc_en": "Paid, billed by Google per image (about $0.034 at 1K). Needs a Gemini API key.",
+  "desc_el": "Επί πληρωμής, χρεώνεται από την Google ανά εικόνα (περίπου $0.034 στο 1K). Θέλει κλειδί Gemini.",
+  "good_en": "Fast, cheap, good photorealism and consistent look across several images.",
+  "good_el": "Γρήγορο, φθηνό, καλός φωτορεαλισμός και συνέπεια στυλ ανάμεσα σε πολλές εικόνες.",
+  "license": "paid",
+  "kind": "t2i",
+  "provider": "gemini",
+  "model": "gemini-nano-banana-2.1",
+  "request": {
+   "input": [
+    {
+     "type": "text",
+     "text": "{prompt}"
+    }
+   ],
+   "response_format": {
+    "type": "image",
+    "mime_type": "image/jpeg",
+    "aspect_ratio": "{aspect}",
+    "image_size": "1K"
+   }
+  },
+  "est_usd": 0.034,
+  "priority": 301,
+  "vram_gb": 0,
+  "est_sec": 30,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "aspect",
+    "type": "text",
+    "label_en": "Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4)",
+    "label_el": "Αναλογία (1:1, 16:9, 9:16, 4:3, 3:4)",
+    "default": "1:1"
+   }
+  ]
+ },
+ "workflow": {}
+}

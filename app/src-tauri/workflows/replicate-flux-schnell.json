@@ -1,0 +1,43 @@
+{
+ "meta": {
+  "id": "replicate-flux-schnell",
+  "name_en": "Text → Image: FLUX.1 schnell (Replicate)",
+  "name_el": "Κείμενο → Εικόνα: FLUX.1 schnell (Replicate)",
+  "desc_en": "Hosted on Replicate, about $0.003 per image. No GPU needed. Needs a Replicate token.",
+  "desc_el": "Στο Replicate, περίπου $0.003 ανά εικόνα. Δεν χρειάζεται GPU. Θέλει token Replicate.",
+  "kind": "t2i",
+  "provider": "replicate",
+  "model": "black-forest-labs/flux-schnell",
+  "request": {
+   "prompt": "{prompt}",
+   "aspect_ratio": "1:1",
+   "num_outputs": 1,
+   "output_format": "png",
+   "seed": "{seed}"
+  },
+  "est_usd": 0.003,
+  "priority": 203,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

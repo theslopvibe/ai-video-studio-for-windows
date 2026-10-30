@@ -1,0 +1,168 @@
+{
+ "meta": {
+  "id": "sdxl-t2i",
+  "name_en": "Text → Image: Stable Diffusion XL",
+  "name_el": "Κείμενο → Εικόνα: Stable Diffusion XL",
+  "desc_en": "Classic image model. Runs on 8 GB cards in about 10 seconds. Needs “Stable Diffusion XL 1.0 base” installed.",
+  "desc_el": "Κλασικό μοντέλο εικόνας. Τρέχει σε κάρτες 8 GB σε περίπου 10 δευτερόλεπτα. Χρειάζεται το «Stable Diffusion XL 1.0 base».",
+  "kind": "t2i",
+  "models": [
+   "sd_xl_base_1.0"
+  ],
+  "pack": "sdxl-base",
+  "vram_gb": 8,
+  "est_sec": 12,
+  "priority": 201,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "negative",
+    "type": "text",
+    "label_en": "Negative prompt",
+    "label_el": "Αρνητικό prompt",
+    "default": "blurry, low quality, deformed, watermark, text",
+    "advanced": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__"
+   }
+  ]
+ },
+ "workflow": {
+  "1": {
+   "class_type": "CheckpointLoaderSimple",
+   "inputs": {
+    "ckpt_name": "sd_xl_base_1.0.safetensors"
+   },
+   "_meta": {
+    "title": "Checkpoint"
+   }
+  },
+  "2": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "1",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "Positive"
+   }
+  },
+  "3": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "{{negative}}",
+    "clip": [
+     "1",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "Negative"
+   }
+  },
+  "4": {
+   "class_type": "EmptyLatentImage",
+   "inputs": {
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "batch_size": 1
+   },
+   "_meta": {
+    "title": "Latent"
+   }
+  },
+  "5": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": "{{seed}}",
+    "steps": 28,
+    "cfg": 7.0,
+    "sampler_name": "dpmpp_2m",
+    "scheduler": "karras",
+    "denoise": 1.0,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "2",
+     0
+    ],
+    "negative": [
+     "3",
+     0
+    ],
+    "latent_image": [
+     "4",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "KSampler"
+   }
+  },
+  "6": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "5",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ]
+   },
+   "_meta": {
+    "title": "VAE Decode"
+   }
+  },
+  "7": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "aivs",
+    "images": [
+     "6",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "Save"
+   }
+  }
+ }
+}

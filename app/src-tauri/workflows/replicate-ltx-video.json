@@ -1,0 +1,49 @@
+{
+ "meta": {
+  "id": "replicate-ltx-video",
+  "name_en": "Text → Video: LTX-Video (Replicate)",
+  "name_el": "Κείμενο → Video: LTX-Video (Replicate)",
+  "desc_en": "Hosted LTX-Video, very fast and cheap. Needs a Replicate token.",
+  "desc_el": "LTX-Video στο Replicate, πολύ γρήγορο και φθηνό. Θέλει token Replicate.",
+  "kind": "t2v",
+  "provider": "replicate",
+  "model": "lightricks/ltx-video",
+  "request": {
+   "prompt": "{prompt}",
+   "negative_prompt": "{negative}",
+   "seed": "{seed}"
+  },
+  "est_usd": 0.03,
+  "priority": 152,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "negative",
+    "type": "text",
+    "label_en": "Negative prompt",
+    "label_el": "Αρνητικό prompt",
+    "default": "worst quality, blurry, jittery, distorted",
+    "advanced": true
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

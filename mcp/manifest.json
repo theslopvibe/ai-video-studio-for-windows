@@ -1,0 +1,27 @@
+{
+  "manifest_version": "0.2",
+  "name": "ai-video-studio",
+  "display_name": "AI Video Studio",
+  "version": "0.1.0",
+  "description": "Φτιάξε AI video (LTX-Video, Wan 2.2) μέσα από το chat του Claude, με το πρόγραμμα AI Video Studio.",
+  "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο Vast.ai, και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
+  "author": { "name": "AI Video Studio" },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": { "command": "node", "args": ["${__dirname}/server/index.js"] }
+  },
+  "tools": [
+    { "name": "video_studio_status", "description": "Έλεγχος ότι η εφαρμογή τρέχει και είναι ρυθμισμένη" },
+    { "name": "list_workflows", "description": "Διαθέσιμα μοντέλα/τρόποι" },
+    { "name": "list_gpus", "description": "Κάρτες γραφικών και τιμές" },
+    { "name": "generate_video", "description": "Παραγωγή video (κοστίζει, ζητά επιβεβαίωση)" },
+    { "name": "set_defaults", "description": "Αλλαγή προεπιλεγμένου μοντέλου/κάρτας" },
+    { "name": "get_job", "description": "Κατάσταση παραγωγής" },
+    { "name": "list_jobs", "description": "Τελευταίες παραγωγές" },
+    { "name": "cancel_job", "description": "Ακύρωση" },
+    { "name": "retry_job", "description": "Επανάληψη αποτυχημένου" },
+    { "name": "make_report", "description": "Αναφορά διάγνωσης" }
+  ],
+  "compatibility": { "platforms": ["win32"] }
+}

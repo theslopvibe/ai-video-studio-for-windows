@@ -1,0 +1,66 @@
+{
+ "meta": {
+  "id": "fal-flux-schnell",
+  "name_en": "Text → Image: FLUX.1 schnell (fal.ai)",
+  "name_el": "Κείμενο → Εικόνα: FLUX.1 schnell (fal.ai)",
+  "desc_en": "Hosted on fal.ai, about $0.003 per image. No GPU needed. Needs a fal.ai key.",
+  "desc_el": "Στο fal.ai, περίπου $0.003 ανά εικόνα. Δεν χρειάζεται GPU. Θέλει κλειδί fal.ai.",
+  "kind": "t2i",
+  "provider": "fal",
+  "model": "fal-ai/flux/schnell",
+  "request": {
+   "prompt": "{prompt}",
+   "image_size": {
+    "width": "{width}",
+    "height": "{height}"
+   },
+   "num_inference_steps": 4,
+   "seed": "{seed}",
+   "num_images": 1
+  },
+  "est_usd": 0.003,
+  "priority": 202,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

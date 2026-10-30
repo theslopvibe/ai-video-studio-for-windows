@@ -1,0 +1,40 @@
+{
+ "meta": {
+  "id": "fal-wan22-t2v",
+  "name_en": "Text → Video: Wan 2.2 (fal.ai)",
+  "name_el": "Κείμενο → Video: Wan 2.2 (fal.ai)",
+  "desc_en": "Hosted Wan 2.2 on fal.ai. Needs a fal.ai key. The model id may change; edit this file if it fails.",
+  "desc_el": "Wan 2.2 στο fal.ai. Θέλει κλειδί fal.ai. Αν αλλάξει το id του μοντέλου, επεξεργάσου αυτό το αρχείο.",
+  "kind": "t2v",
+  "provider": "fal",
+  "model": "fal-ai/wan/v2.2-a14b/text-to-video",
+  "request": {
+   "prompt": "{prompt}",
+   "seed": "{seed}"
+  },
+  "est_usd": 0.08,
+  "priority": 153,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

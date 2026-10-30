@@ -1,0 +1,17 @@
+# dependencies and build output
+node_modules/
+app/build/
+app/.svelte-kit/
+app/src-tauri/target/
+app/src-tauri/gen/
+dist/
+
+# local tooling and test output
+.superpowers/
+app/tests/e2e/out/
+*.part
+*.log
+
+# internal agent handoff notes
+memory.md
+PLAN.md

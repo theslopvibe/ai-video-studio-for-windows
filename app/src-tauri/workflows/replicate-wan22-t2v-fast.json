@@ -1,0 +1,40 @@
+{
+ "meta": {
+  "id": "replicate-wan22-t2v-fast",
+  "name_en": "Text → Video: Wan 2.2 fast (Replicate)",
+  "name_el": "Κείμενο → Video: Wan 2.2 fast (Replicate)",
+  "desc_en": "Hosted Wan 2.2, a few cents per clip. No GPU needed. Needs a Replicate token. The model id may change; edit this file if it fails.",
+  "desc_el": "Wan 2.2 στο Replicate, λίγα cents ανά clip. Δεν χρειάζεται GPU. Θέλει token Replicate. Αν αλλάξει το id του μοντέλου, επεξεργάσου αυτό το αρχείο.",
+  "kind": "t2v",
+  "provider": "replicate",
+  "model": "wan-video/wan-2.2-t2v-fast",
+  "request": {
+   "prompt": "{prompt}",
+   "seed": "{seed}"
+  },
+  "est_usd": 0.05,
+  "priority": 150,
+  "vram_gb": 0,
+  "est_sec": 60,
+  "models": [],
+  "pack": "",
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__",
+    "advanced": true
+   }
+  ]
+ },
+ "workflow": {}
+}

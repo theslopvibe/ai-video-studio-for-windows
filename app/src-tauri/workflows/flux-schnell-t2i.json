@@ -1,0 +1,159 @@
+{
+ "meta": {
+  "id": "flux-schnell-t2i",
+  "name_en": "Text → Image: FLUX.1 schnell",
+  "name_el": "Κείμενο → Εικόνα: FLUX.1 schnell",
+  "desc_en": "High quality and very good at following the prompt, 4 steps. Wants a 12-16 GB card. Needs “FLUX.1 [schnell] fp8” installed.",
+  "desc_el": "Υψηλή ποιότητα και πολύ καλή τήρηση του prompt, 4 βήματα. Θέλει κάρτα 12-16 GB. Χρειάζεται το «FLUX.1 [schnell] fp8».",
+  "kind": "t2i",
+  "models": [
+   "flux1-schnell-fp8"
+  ],
+  "pack": "flux1-schnell",
+  "vram_gb": 12,
+  "est_sec": 15,
+  "priority": 200,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 1536,
+    "step": 64
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__"
+   }
+  ]
+ },
+ "workflow": {
+  "1": {
+   "class_type": "CheckpointLoaderSimple",
+   "inputs": {
+    "ckpt_name": "flux1-schnell-fp8.safetensors"
+   },
+   "_meta": {
+    "title": "Checkpoint"
+   }
+  },
+  "2": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "1",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "Positive"
+   }
+  },
+  "3": {
+   "class_type": "ConditioningZeroOut",
+   "inputs": {
+    "conditioning": [
+     "2",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "Negative (zero)"
+   }
+  },
+  "4": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "batch_size": 1
+   },
+   "_meta": {
+    "title": "Latent"
+   }
+  },
+  "5": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": "{{seed}}",
+    "steps": 4,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "2",
+     0
+    ],
+    "negative": [
+     "3",
+     0
+    ],
+    "latent_image": [
+     "4",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "KSampler"
+   }
+  },
+  "6": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "5",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ]
+   },
+   "_meta": {
+    "title": "VAE Decode"
+   }
+  },
+  "7": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "aivs",
+    "images": [
+     "6",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "Save"
+   }
+  }
+ }
+}

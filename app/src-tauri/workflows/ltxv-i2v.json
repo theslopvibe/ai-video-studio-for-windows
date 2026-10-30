@@ -1,0 +1,318 @@
+{
+ "meta": {
+  "id": "ltxv-i2v",
+  "name_el": "Εικόνα → Video: LTX-Video 2B — Πολύ γρήγορο",
+  "name_en": "Image → Video: LTX-Video 2B — Very fast",
+  "desc_el": "Μικρό, πολύ γρήγορο μοντέλο (ποιότητα χαμηλότερη από το Wan). Τρέχει σε GPU 12-16 GB. Χρειάζεται το «LTX-Video 2B» εγκατεστημένο.",
+  "desc_en": "Small, very fast model (lower quality than Wan). Runs on 12-16 GB GPUs. Needs “LTX-Video 2B” installed.",
+  "kind": "i2v",
+  "models": [
+   "ltx-video-2b-v0.9.5",
+   "t5xxl_fp8_e4m3fn_scaled"
+  ],
+  "pack": "ltxv-2b",
+  "vram_gb": 12,
+  "est_sec": 60,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_el": "Prompt",
+    "label_en": "Prompt"
+   },
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_el": "Εικόνα εκκίνησης (1 εικόνα)",
+    "label_en": "Start image (1 image)"
+   },
+   {
+    "key": "negative",
+    "type": "text",
+    "default": "worst quality, inconsistent motion, blurry, jittery, distorted, watermark, text",
+    "advanced": true,
+    "label_el": "Αρνητικό prompt",
+    "label_en": "Negative prompt"
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "default": 768,
+    "min": 256,
+    "max": 1280,
+    "step": 32,
+    "label_el": "Πλάτος",
+    "label_en": "Width"
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "default": 512,
+    "min": 256,
+    "max": 1280,
+    "step": 32,
+    "label_el": "Ύψος",
+    "label_en": "Height"
+   },
+   {
+    "key": "length",
+    "type": "int",
+    "default": 97,
+    "min": 9,
+    "max": 257,
+    "step": 8,
+    "label_el": "Καρέ (8n+1)",
+    "label_en": "Frames (8n+1)"
+   },
+   {
+    "key": "fps",
+    "type": "int",
+    "default": 24,
+    "min": 8,
+    "max": 30,
+    "label_el": "FPS",
+    "label_en": "FPS"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "label_en": "Seed (blank = random)"
+   }
+  ]
+ },
+ "workflow": {
+  "1": {
+   "inputs": {
+    "ckpt_name": "ltx-video-2b-v0.9.5.safetensors"
+   },
+   "class_type": "CheckpointLoaderSimple",
+   "_meta": {
+    "title": "CheckpointLoaderSimple"
+   }
+  },
+  "2": {
+   "inputs": {
+    "clip_name": "t5xxl_fp8_e4m3fn_scaled.safetensors",
+    "type": "ltxv",
+    "device": "default"
+   },
+   "class_type": "CLIPLoader",
+   "_meta": {
+    "title": "CLIPLoader"
+   }
+  },
+  "3": {
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "2",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Positive"
+   }
+  },
+  "4": {
+   "inputs": {
+    "text": "{{negative}}",
+    "clip": [
+     "2",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Negative"
+   }
+  },
+  "5": {
+   "inputs": {
+    "image_b64": "{{image}}"
+   },
+   "class_type": "AIVSLoadImageBase64",
+   "_meta": {
+    "title": "Start image"
+   }
+  },
+  "6": {
+   "inputs": {
+    "positive": [
+     "3",
+     0
+    ],
+    "negative": [
+     "4",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ],
+    "image": [
+     "5",
+     0
+    ],
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "length": "{{length}}",
+    "batch_size": 1,
+    "strength": 1.0
+   },
+   "class_type": "LTXVImgToVideo",
+   "_meta": {
+    "title": "LTXVImgToVideo"
+   }
+  },
+  "7": {
+   "inputs": {
+    "positive": [
+     "6",
+     0
+    ],
+    "negative": [
+     "6",
+     1
+    ],
+    "frame_rate": "{{fps}}"
+   },
+   "class_type": "LTXVConditioning",
+   "_meta": {
+    "title": "LTXVConditioning"
+   }
+  },
+  "8": {
+   "inputs": {
+    "steps": 30,
+    "max_shift": 2.05,
+    "base_shift": 0.95,
+    "stretch": true,
+    "terminal": 0.1,
+    "latent": [
+     "6",
+     2
+    ]
+   },
+   "class_type": "LTXVScheduler",
+   "_meta": {
+    "title": "LTXVScheduler"
+   }
+  },
+  "9": {
+   "inputs": {
+    "sampler_name": "euler"
+   },
+   "class_type": "KSamplerSelect",
+   "_meta": {
+    "title": "KSamplerSelect"
+   }
+  },
+  "10": {
+   "inputs": {
+    "noise_seed": "{{seed}}"
+   },
+   "class_type": "RandomNoise",
+   "_meta": {
+    "title": "RandomNoise"
+   }
+  },
+  "11": {
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "7",
+     0
+    ],
+    "negative": [
+     "7",
+     1
+    ],
+    "cfg": 3.0
+   },
+   "class_type": "CFGGuider",
+   "_meta": {
+    "title": "CFGGuider"
+   }
+  },
+  "12": {
+   "inputs": {
+    "noise": [
+     "10",
+     0
+    ],
+    "guider": [
+     "11",
+     0
+    ],
+    "sampler": [
+     "9",
+     0
+    ],
+    "sigmas": [
+     "8",
+     0
+    ],
+    "latent_image": [
+     "6",
+     2
+    ]
+   },
+   "class_type": "SamplerCustomAdvanced",
+   "_meta": {
+    "title": "SamplerCustomAdvanced"
+   }
+  },
+  "13": {
+   "inputs": {
+    "samples": [
+     "12",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ]
+   },
+   "class_type": "VAEDecode",
+   "_meta": {
+    "title": "VAEDecode"
+   }
+  },
+  "14": {
+   "inputs": {
+    "fps": "{{fps}}",
+    "images": [
+     "13",
+     0
+    ]
+   },
+   "class_type": "CreateVideo",
+   "_meta": {
+    "title": "CreateVideo"
+   }
+  },
+  "15": {
+   "inputs": {
+    "filename_prefix": "video/ComfyUI",
+    "format": "auto",
+    "codec": "auto",
+    "video": [
+     "14",
+     0
+    ]
+   },
+   "class_type": "SaveVideo",
+   "_meta": {
+    "title": "SaveVideo"
+   }
+  }
+ }
+}

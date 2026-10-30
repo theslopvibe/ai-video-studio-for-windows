@@ -1,0 +1,262 @@
+{
+ "meta": {
+  "id": "wan22-ti2v-5b",
+  "name_el": "Εικόνα → Video: Wan 2.2 5B — Οικονομικό (μικρή GPU)",
+  "name_en": "Image → Video: Wan 2.2 5B — Budget (small GPU)",
+  "desc_el": "Μικρότερο μοντέλο, τρέχει σε φθηνότερες GPU (16 GB). Πιο αργό ανά βήμα (20 βήματα) αλλά φθηνή κάρτα. Χρειάζεται το «Wan 2.2 TI2V 5B».",
+  "desc_en": "Smaller model that runs on cheaper 16 GB GPUs. 20 steps, but a cheap card. Needs “Wan 2.2 TI2V 5B”.",
+  "kind": "i2v",
+  "models": [
+   "wan2.2_ti2v_5B_fp16",
+   "wan2.2_vae"
+  ],
+  "pack": "wan22-ti2v-5b",
+  "vram_gb": 16,
+  "est_sec": 240,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_el": "Prompt (τι κίνηση να κάνει η εικόνα)",
+    "label_en": "Prompt (how the image should move)"
+   },
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_el": "Εικόνα εκκίνησης (1 εικόνα)",
+    "label_en": "Start image (1 image)"
+   },
+   {
+    "key": "negative",
+    "type": "text",
+    "default": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走，裸露，NSFW",
+    "advanced": true,
+    "label_el": "Αρνητικό prompt",
+    "label_en": "Negative prompt"
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "default": 832,
+    "min": 256,
+    "max": 1280,
+    "step": 32,
+    "label_el": "Πλάτος",
+    "label_en": "Width"
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "default": 480,
+    "min": 256,
+    "max": 1280,
+    "step": 32,
+    "label_el": "Ύψος",
+    "label_en": "Height"
+   },
+   {
+    "key": "length",
+    "type": "int",
+    "default": 73,
+    "min": 17,
+    "max": 121,
+    "step": 4,
+    "label_el": "Καρέ (4n+1)",
+    "label_en": "Frames (4n+1)"
+   },
+   {
+    "key": "fps",
+    "type": "int",
+    "default": 24,
+    "min": 8,
+    "max": 30,
+    "label_el": "FPS",
+    "label_en": "FPS"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "label_en": "Seed (blank = random)"
+   }
+  ],
+  "priority": 30
+ },
+ "workflow": {
+  "90": {
+   "inputs": {
+    "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    "type": "wan",
+    "device": "default"
+   },
+   "class_type": "CLIPLoader",
+   "_meta": {
+    "title": "CLIPLoader"
+   }
+  },
+  "91": {
+   "inputs": {
+    "text": "{{negative}}",
+    "clip": [
+     "90",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Negative"
+   }
+  },
+  "99": {
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "90",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Positive"
+   }
+  },
+  "92": {
+   "inputs": {
+    "vae_name": "wan2.2_vae.safetensors"
+   },
+   "class_type": "VAELoader",
+   "_meta": {
+    "title": "VAELoader"
+   }
+  },
+  "101": {
+   "inputs": {
+    "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+    "weight_dtype": "default"
+   },
+   "class_type": "UNETLoader",
+   "_meta": {
+    "title": "UNETLoader"
+   }
+  },
+  "93": {
+   "inputs": {
+    "shift": 8.0,
+    "model": [
+     "101",
+     0
+    ]
+   },
+   "class_type": "ModelSamplingSD3",
+   "_meta": {
+    "title": "ModelSamplingSD3"
+   }
+  },
+  "110": {
+   "inputs": {
+    "image_b64": "{{image}}"
+   },
+   "class_type": "AIVSLoadImageBase64",
+   "_meta": {
+    "title": "Start image"
+   }
+  },
+  "104": {
+   "inputs": {
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "length": "{{length}}",
+    "batch_size": 1,
+    "vae": [
+     "92",
+     0
+    ],
+    "start_image": [
+     "110",
+     0
+    ]
+   },
+   "class_type": "Wan22ImageToVideoLatent",
+   "_meta": {
+    "title": "Wan22ImageToVideoLatent"
+   }
+  },
+  "96": {
+   "inputs": {
+    "seed": "{{seed}}",
+    "steps": 20,
+    "cfg": 5.0,
+    "sampler_name": "uni_pc",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "model": [
+     "93",
+     0
+    ],
+    "positive": [
+     "99",
+     0
+    ],
+    "negative": [
+     "91",
+     0
+    ],
+    "latent_image": [
+     "104",
+     0
+    ]
+   },
+   "class_type": "KSampler",
+   "_meta": {
+    "title": "KSampler"
+   }
+  },
+  "97": {
+   "inputs": {
+    "samples": [
+     "96",
+     0
+    ],
+    "vae": [
+     "92",
+     0
+    ]
+   },
+   "class_type": "VAEDecode",
+   "_meta": {
+    "title": "VAEDecode"
+   }
+  },
+  "100": {
+   "inputs": {
+    "fps": "{{fps}}",
+    "images": [
+     "97",
+     0
+    ]
+   },
+   "class_type": "CreateVideo",
+   "_meta": {
+    "title": "CreateVideo"
+   }
+  },
+  "98": {
+   "inputs": {
+    "filename_prefix": "video/ComfyUI",
+    "format": "auto",
+    "codec": "auto",
+    "video": [
+     "100",
+     0
+    ]
+   },
+   "class_type": "SaveVideo",
+   "_meta": {
+    "title": "SaveVideo"
+   }
+  }
+ }
+}

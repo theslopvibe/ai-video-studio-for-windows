@@ -1,0 +1,42 @@
+import type { Lang } from "./i18n";
+
+const C = {
+  new_chat: { en: "New chat", el: "Νέα συνομιλία" },
+  new_folder: { en: "New folder", el: "Νέος φάκελος" },
+  folder_name: { en: "Folder name", el: "Όνομα φακέλου" },
+  search: { en: "Search chats…", el: "Αναζήτηση συνομιλιών…" },
+  no_folder: { en: "No folder", el: "Χωρίς φάκελο" },
+  all: { en: "All chats", el: "Όλες οι συνομιλίες" },
+  results: { en: "results", el: "αποτελέσματα" },
+  empty: { en: "Start a conversation. Ask for video ideas, a script, or an improved prompt.", el: "Ξεκίνα μια συνομιλία. Ζήτα ιδέες για video, σενάριο ή καλύτερο prompt." },
+  placeholder: { en: "Write a message. Enter sends, Shift+Enter adds a line.", el: "Γράψε ένα μήνυμα. Το Enter στέλνει, το Shift+Enter αλλάζει γραμμή." },
+  send: { en: "Send", el: "Αποστολή" },
+  thinking: { en: "Thinking…", el: "Σκέφτομαι…" },
+  provider: { en: "Provider", el: "Πάροχος" },
+  model: { en: "Model", el: "Μοντέλο" },
+  system: { en: "Instructions for this chat (optional)", el: "Οδηγίες για αυτή τη συνομιλία (προαιρετικό)" },
+  pin: { en: "Pin", el: "Καρφίτσωμα" },
+  unpin: { en: "Unpin", el: "Ξεκαρφίτσωμα" },
+  rename: { en: "Rename", el: "Μετονομασία" },
+  delete: { en: "Delete", el: "Διαγραφή" },
+  delete_chat_q: { en: "Delete this chat and all its messages?", el: "Διαγραφή της συνομιλίας και όλων των μηνυμάτων;" },
+  delete_folder_q: { en: "Delete this folder? Its chats are kept.", el: "Διαγραφή του φακέλου; Οι συνομιλίες του μένουν." },
+  move: { en: "Move to folder", el: "Μετακίνηση σε φάκελο" },
+  copy: { en: "Copy", el: "Αντιγραφή" },
+  to_generate: { en: "Use as prompt", el: "Χρήση ως prompt" },
+  need_key: { en: "This provider needs an API key. Add it in Settings → Chat and cloud providers.", el: "Αυτός ο πάροχος θέλει API key. Πρόσθεσέ το στα Ρυθμίσεις → Πάροχοι chat και cloud." },
+  no_key_badge: { en: "no key", el: "χωρίς key" },
+  prov_title: { en: "Chat and cloud providers", el: "Πάροχοι chat και cloud" },
+  prov_note: { en: "Keys for the built-in chat (GLM, DeepSeek, OpenRouter) and for hosted video and image APIs (fal.ai, Replicate). They are stored in the Windows Credential Manager. Ollama needs no key.", el: "Κλειδιά για το chat (GLM, DeepSeek, OpenRouter) και για hosted APIs video και εικόνας (fal.ai, Replicate). Αποθηκεύονται στο Windows Credential Manager. Το Ollama δεν θέλει κλειδί." },
+  save_test: { en: "Save and test", el: "Αποθήκευση και έλεγχος" },
+  about_title: { en: "About", el: "Σχετικά" },
+  about_text: { en: "AI Video Studio is free and open source (MIT license). Developed by", el: "Το AI Video Studio είναι δωρεάν και open source (άδεια MIT). Αναπτύχθηκε από το" },
+  about_models: { en: "The AI models you download have their own licenses; each model's license is shown before you install it.", el: "Τα μοντέλα AI που κατεβάζεις έχουν τις δικές τους άδειες· η άδεια κάθε μοντέλου φαίνεται πριν το εγκαταστήσεις." },
+  custom_model: { en: "Custom…", el: "Άλλο…" },
+  you: { en: "You", el: "Εσύ" },
+  assistant: { en: "Assistant", el: "Βοηθός" },
+  prompt_sent: { en: "Prompt copied to Generate.", el: "Το prompt πέρασε στη Δημιουργία." },
+} as const;
+
+export type CKey = keyof typeof C;
+export const ct = (lang: Lang, k: CKey): string => C[k][lang] ?? C[k].en;
