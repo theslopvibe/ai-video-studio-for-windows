@@ -66,6 +66,7 @@ const D = {
   tab_t2v: { el: "Κείμενο → Video", en: "Text → Video" },
   per_item: { el: "αποτέλεσμα", en: "result" },
   tab_t2i: { el: "Κείμενο → Εικόνα", en: "Text → Image" },
+  tab_t2a: { el: "Κείμενο → Μουσική", en: "Text → Music" },
   tab_i2v: { el: "Εικόνα → Video", en: "Image → Video" },
   img_title: { el: "Εικόνα εκκίνησης", en: "Start image" },
   img_pick: { el: "Διάλεξε εικόνα ή σύρε την εδώ", en: "Choose an image or drop it here" },

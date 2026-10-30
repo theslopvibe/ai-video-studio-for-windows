@@ -462,7 +462,7 @@ async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<S
 pub fn studio_system(st: &AppState) -> String {
     let (wfs, _) = st.load_workflows();
     let mut cat = String::new();
-    for w in wfs.iter().filter(|w| matches!(w.meta.kind.as_str(), "t2v" | "t2i")) {
+    for w in wfs.iter().filter(|w| matches!(w.meta.kind.as_str(), "t2v" | "t2i" | "t2a")) {
         let m = &w.meta;
         let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image")).collect();
         let cost = if m.provider.is_empty() { format!("open source, ~{}s on a GPU", m.est_sec) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
@@ -475,7 +475,7 @@ To queue a result add one block per clip, exactly:
 ```video
 {{\"workflow\":\"<id>\",\"prompt\":\"<English prompt>\",\"params\":{{}}}}
 ```
-The app shows the user a card with the price and a Generate button, so never say it is already generating. Use only ids from the list; put only keys from that model's params in \"params\" (e.g. width, height, length, fps) and leave it empty when unsure. For several scenes write several blocks in order. Image-to-video needs a start image: tell the user to use the Generate page for that.
+The app shows the user a card with the price and a Generate button, so never say it is already generating. Use only ids from the list; put only keys from that model's params in \"params\" (e.g. width, height, length, fps) and leave it empty when unsure. For several scenes write several blocks in order. For music pick a t2a model: prompt = style tags, params lyrics (or [instrumental]) and seconds. Image-to-video needs a start image: tell the user to use the Generate page for that.
 Default run mode: {}.
 Models (id | name | kind | cost | use | params):
 {}",

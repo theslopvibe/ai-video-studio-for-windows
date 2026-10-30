@@ -5,7 +5,7 @@
 
   const isI2v = (w?: { meta: { inputs: InputDef[] } }) => !!w?.meta.inputs.some((i) => i.type === "image");
   let wfId = $state(S.settings.last_workflow || S.workflows[0]?.meta.id || "");
-  let kind = $state<"t2v" | "i2v" | "t2i">(S.workflows.find((w) => w.meta.id === wfId)?.meta.kind === "t2i" ? "t2i" : isI2v(S.workflows.find((w) => w.meta.id === wfId)) ? "i2v" : "t2v");
+  let kind = $state<"t2v" | "i2v" | "t2i" | "t2a">(S.workflows.find((w) => w.meta.id === wfId)?.meta.kind === "t2a" ? "t2a" : S.workflows.find((w) => w.meta.id === wfId)?.meta.kind === "t2i" ? "t2i" : isI2v(S.workflows.find((w) => w.meta.id === wfId)) ? "i2v" : "t2v");
   type Img = { b64: string; url: string }; // b64 = JPEG without data: prefix
   type Scene = { prompt: string; imgs: Record<string, Img> };
   let imgs = $state<Record<string, Img>>({}); // by slot key: image (start), image_end (end)
@@ -22,7 +22,7 @@
   let showAdv = $state(false);
   let values = $state<Record<string, Record<string, unknown>>>({});
 
-  let list = $derived(S.workflows.filter((w) => (kind === "t2i" ? w.meta.kind === "t2i" : w.meta.kind !== "t2i" && isI2v(w) === (kind === "i2v"))));
+  let list = $derived(S.workflows.filter((w) => (kind === "t2a" ? w.meta.kind === "t2a" : kind === "t2i" ? w.meta.kind === "t2i" : w.meta.kind !== "t2i" && w.meta.kind !== "t2a" && isI2v(w) === (kind === "i2v"))));
   let wf = $derived(list.find((w) => w.meta.id === wfId) ?? list[0]);
   let slots = $derived((wf?.meta.inputs ?? []).filter((i) => i.type === "image"));
   let packMissing = $derived.by(() => {
@@ -44,7 +44,7 @@
     if (S.draft) {
       prompt = S.draft.prompt;
       const dw = S.workflows.find((w) => w.meta.id === S.draft!.workflow);
-      if (dw) { kind = dw.meta.kind === "t2i" ? "t2i" : isI2v(dw) ? "i2v" : "t2v"; wfId = dw.meta.id; }
+      if (dw) { kind = dw.meta.kind === "t2a" ? "t2a" : dw.meta.kind === "t2i" ? "t2i" : isI2v(dw) ? "i2v" : "t2v"; wfId = dw.meta.id; }
       S.draft = null;
     }
   });
@@ -170,6 +170,7 @@
       <button class={kind === "t2v" ? "primary" : ""} onclick={() => (kind = "t2v")}>{S.t("tab_t2v")}</button>
       <button class={kind === "i2v" ? "primary" : ""} onclick={() => (kind = "i2v")}>{S.t("tab_i2v")}</button>
       <button class={kind === "t2i" ? "primary" : ""} onclick={() => (kind = "t2i")}>{S.t("tab_t2i")}</button>
+      <button class={kind === "t2a" ? "primary" : ""} onclick={() => (kind = "t2a")}>{S.t("tab_t2a")}</button>
     </div>
 
     {#if kind === "i2v"}

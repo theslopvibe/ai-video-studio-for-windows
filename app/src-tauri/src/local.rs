@@ -492,7 +492,7 @@ pub fn find_output(entry: &Value) -> Option<(String, String, String)> {
     let outs = entry["outputs"].as_object()?;
     let mut best: Option<(String, String, String)> = None;
     for node in outs.values() {
-        for key in ["images", "gifs", "videos"] {
+        for key in ["images", "gifs", "videos", "audio"] {
             for f in node[key].as_array().cloned().unwrap_or_default() {
                 let name = f["filename"].as_str().unwrap_or("");
                 if f["type"].as_str().unwrap_or("output") != "output" {
@@ -500,7 +500,7 @@ pub fn find_output(entry: &Value) -> Option<(String, String, String)> {
                 }
                 let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
                 let t = (name.to_string(), f["subfolder"].as_str().unwrap_or("").to_string(), "output".to_string());
-                if matches!(ext.as_str(), "mp4" | "webm" | "mov") {
+                if matches!(ext.as_str(), "mp4" | "webm" | "mov" | "mp3" | "flac" | "wav" | "ogg" | "opus") {
                     return Some(t);
                 }
                 if best.is_none() && matches!(ext.as_str(), "gif" | "webp" | "png" | "jpg" | "jpeg") {
@@ -605,6 +605,8 @@ mod tests {
                                   "98": {"images": [{"filename": "video_00001_.mp4", "subfolder": "video", "type": "output"}], "animated": [true]}}});
         assert_eq!(find_output(&h), Some(("video_00001_.mp4".into(), "video".into(), "output".into())));
         assert_eq!(find_output(&json!({"outputs": {}})), None);
+        let a = json!({"outputs": {"8": {"audio": [{"filename": "ComfyUI_00001_.mp3", "subfolder": "audio", "type": "output"}]}}});
+        assert_eq!(find_output(&a), Some(("ComfyUI_00001_.mp3".into(), "audio".into(), "output".into())));
     }
 }
 

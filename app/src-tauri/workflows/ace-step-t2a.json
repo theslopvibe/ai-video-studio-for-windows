@@ -1,0 +1,175 @@
+{
+ "meta": {
+  "id": "ace-step-t2a",
+  "name_en": "Text → Music: ACE-Step 3.5B",
+  "name_el": "Κείμενο → Μουσική: ACE-Step 3.5B",
+  "desc_en": "Makes a song or instrumental from a style description and optional lyrics (many languages). Runs on your PC, about 8-10 GB of VRAM. Needs “ACE-Step 3.5B” installed.",
+  "desc_el": "Φτιάχνει τραγούδι ή instrumental από περιγραφή στυλ και προαιρετικούς στίχους (πολλές γλώσσες). Τρέχει στον υπολογιστή σου, περίπου 8-10 GB VRAM. Χρειάζεται το «ACE-Step 3.5B».",
+  "kind": "t2a",
+  "license": "Apache-2.0",
+  "good_en": "Background music, jingles and full songs with vocals for videos. Free, runs locally.",
+  "good_el": "Μουσική υπόκρουση, jingles και ολόκληρα τραγούδια με φωνή για video. Δωρεάν, τοπικά.",
+  "models": [
+   "ace_step_v1_3.5b"
+  ],
+  "pack": "ace-step",
+  "vram_gb": 10,
+  "est_sec": 60,
+  "priority": 300,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_en": "Style (genre, mood, instruments)",
+    "label_el": "Στυλ (είδος, διάθεση, όργανα)"
+   },
+   {
+    "key": "lyrics",
+    "type": "text",
+    "default": "[instrumental]",
+    "label_en": "Lyrics (or [instrumental])",
+    "label_el": "Στίχοι (ή [instrumental])"
+   },
+   {
+    "key": "seconds",
+    "type": "float",
+    "default": 30,
+    "min": 5,
+    "max": 240,
+    "step": 5,
+    "label_en": "Length (seconds)",
+    "label_el": "Διάρκεια (δευτερόλεπτα)"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ]
+ },
+ "workflow": {
+  "1": {
+   "class_type": "CheckpointLoaderSimple",
+   "inputs": {
+    "ckpt_name": "ace_step_v1_3.5b.safetensors"
+   },
+   "_meta": {
+    "title": "CheckpointLoaderSimple"
+   }
+  },
+  "2": {
+   "class_type": "ModelSamplingSD3",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "shift": 5.0
+   },
+   "_meta": {
+    "title": "ModelSamplingSD3"
+   }
+  },
+  "3": {
+   "class_type": "TextEncodeAceStepAudio",
+   "inputs": {
+    "clip": [
+     "1",
+     1
+    ],
+    "tags": "{{prompt}}",
+    "lyrics": "{{lyrics}}",
+    "lyrics_strength": 0.99
+   },
+   "_meta": {
+    "title": "Style and lyrics"
+   }
+  },
+  "4": {
+   "class_type": "ConditioningZeroOut",
+   "inputs": {
+    "conditioning": [
+     "3",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "Negative (zero)"
+   }
+  },
+  "5": {
+   "class_type": "EmptyAceStepLatentAudio",
+   "inputs": {
+    "seconds": "{{seconds}}",
+    "batch_size": 1
+   },
+   "_meta": {
+    "title": "EmptyAceStepLatentAudio"
+   }
+  },
+  "6": {
+   "class_type": "KSampler",
+   "inputs": {
+    "model": [
+     "2",
+     0
+    ],
+    "seed": "{{seed}}",
+    "steps": 50,
+    "cfg": 5.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "positive": [
+     "3",
+     0
+    ],
+    "negative": [
+     "4",
+     0
+    ],
+    "latent_image": [
+     "5",
+     0
+    ],
+    "denoise": 1.0
+   },
+   "_meta": {
+    "title": "KSampler"
+   }
+  },
+  "7": {
+   "class_type": "VAEDecodeAudio",
+   "inputs": {
+    "samples": [
+     "6",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ]
+   },
+   "_meta": {
+    "title": "VAEDecodeAudio"
+   }
+  },
+  "8": {
+   "class_type": "SaveAudioMP3",
+   "inputs": {
+    "audio": [
+     "7",
+     0
+    ],
+    "filename_prefix": "audio/ComfyUI",
+    "quality": "320k"
+   },
+   "_meta": {
+    "title": "SaveAudioMP3"
+   }
+  }
+ }
+}

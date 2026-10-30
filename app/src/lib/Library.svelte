@@ -8,6 +8,7 @@
   let confirmDel = $state(false);
 
   const src = (j: Job) => convertFileSrc(j.file_path);
+  const isAud = (j: Job) => /\.(mp3|flac|wav|ogg|opus)$/i.test(j.file_path);
   const isImg = (j: Job) => /\.(png|jpe?g|webp|gif)$/i.test(j.file_path);
   const wfName = (id: string) => { const w = S.workflows.find((x) => x.meta.id === id); return w ? (S.lang === "el" ? w.meta.name_el : w.meta.name_en) : id; };
   const when = (t: number) => new Date(t * 1000).toLocaleString(S.lang === "el" ? "el-GR" : "en-GB");
@@ -43,6 +44,8 @@
         <button class="clip" onclick={() => { open = j; confirmDel = false; }}>
           {#if isImg(j)}
             <img src={src(j)} alt={j.prompt} />
+          {:else if isAud(j)}
+            <div class="aud">♪</div>
           {:else}
             <!-- svelte-ignore a11y_media_has_caption -->
             <video src={src(j) + "#t=0.1"} preload="metadata" muted></video>
@@ -59,6 +62,9 @@
     <div class="modal" role="dialog" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
       {#if isImg(open)}
         <img class="full" src={src(open)} alt={open.prompt} />
+      {:else if isAud(open)}
+        <!-- svelte-ignore a11y_media_has_caption -->
+        <audio src={src(open)} controls autoplay style="width:100%"></audio>
       {:else}
         <!-- svelte-ignore a11y_media_has_caption -->
         <video src={src(open)} controls autoplay loop></video>
@@ -82,6 +88,7 @@
 
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+  .aud { display: grid; place-items: center; height: 120px; font-size: 40px; color: var(--dim); background: var(--panel2); }
   .clip { padding: 0; overflow: hidden; text-align: left; background: var(--panel); border-radius: 10px; display: block; }
   .clip img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; background: #000; pointer-events: none; }
   .modal img.full { width: 100%; max-height: 62vh; object-fit: contain; background: #000; border-radius: 8px; }

@@ -242,7 +242,7 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
         None => false,
     };
     let (wfs, _) = st.load_workflows();
-    let wanted_kind = if b["kind"] == "image" { "t2i" } else if has_end { "flf2v" } else if has_start { "i2v" } else { "t2v" };
+    let wanted_kind = if b["kind"] == "audio" { "t2a" } else if b["kind"] == "image" { "t2i" } else if has_end { "flf2v" } else if has_start { "i2v" } else { "t2v" };
     let wf_id = match b["workflow_id"].as_str().filter(|w| !w.is_empty()) {
         Some(q) => resolve_workflow(&wfs, q, wanted_kind)?,
         None => {
