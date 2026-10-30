@@ -36,7 +36,11 @@ pub fn build_script(packs: &[Value], include_local_node: bool) -> String {
             let dir = f["dir"].as_str().unwrap_or("");
             let file = url.rsplit('/').next().unwrap_or("");
             if seen.insert(format!("{dir}/{file}")) {
-                s.push_str(&format!("dl \"{url}\" \"$M/{dir}/{file}\"\n"));
+                let target = match dir.strip_prefix('@') {
+                    Some(rel) if rel.starts_with("custom_nodes/") && !rel.contains("..") => format!("$C/{rel}"),
+                    _ => format!("$M/{dir}"),
+                };
+                s.push_str(&format!("dl \"{url}\" \"{target}/{file}\"\n"));
             }
         }
     }

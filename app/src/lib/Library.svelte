@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Chain from "./Chain.svelte";
+  let chain = $state(false);
   let { embedded = false }: { embedded?: boolean } = $props();
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { api, type Job } from "./api";
@@ -71,11 +73,13 @@
         <video src={src(open)} controls autoplay loop></video>
       {/if}
       <p style="margin-top:12px">{open.prompt}</p>
+      {#if chain}{#key open.id}<Chain job={open} onclose={() => { chain = false; open = null; }} />{/key}{/if}
       <p class="small dim">{wfName(open.workflow_id)} · {when(open.finished_at)}{#if open.est_cost > 0} · {S.t("cost_actual")} ${open.est_cost.toFixed(3)}{/if}</p>
       <div class="row wrap">
         <button onclick={() => S.run(() => api.reveal(open!.file_path))}>{S.t("open_folder")}</button>
         <button onclick={copy}>{S.t("copy_prompt")}</button>
         <button onclick={reuse}>{S.t("reuse_prompt")}</button>
+        <button onclick={() => (chain = !chain)}>{S.lang === "el" ? "Φτιάξε κάτι ακόμα…" : "Make more from this…"}</button>
         {#if confirmDel}
           <button class="danger" onclick={del}>{S.t("confirm_delete")}</button>
         {:else}

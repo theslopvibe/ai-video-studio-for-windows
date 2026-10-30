@@ -391,7 +391,13 @@ pub async fn install_models(app: &AppHandle, st: &AppState, packs: &[Value], can
             if file.contains("..") || file.contains('\\') {
                 return Err(format!("Refusing model entry with a bad file name: {file}"));
             }
-            let dest = comfy(&root).join("models").join(dir).join(file);
+            // "@custom_nodes/..." = relative to the ComfyUI folder itself (a few node packs keep their weights next to the code)
+            let base = match dir.strip_prefix('@') {
+                Some(rel) if rel.starts_with("custom_nodes/") => comfy(&root).join(rel),
+                Some(_) => return Err(format!("Refusing model entry with a bad folder: {dir}")),
+                None => comfy(&root).join("models").join(dir),
+            };
+            let dest = base.join(file);
             progress(app, "models", done as f64 * 100.0 / total.max(1) as f64, file);
             download(app, "models", url, &dest, cancel).await?;
             done += 1;
@@ -436,7 +442,8 @@ async fn install_node(root: &Path, repo: &str, name: &str, cancel: &AtomicBool, 
     .await
     .map_err(|e| e.to_string())??;
     let _ = std::fs::remove_file(&zip_path);
-    let req = dest.join("requirements.txt");
+    // some packs only ship a variant file (e.g. Frame-Interpolation: requirements-no-cupy.txt)
+    let req = ["requirements.txt", "requirements-no-cupy.txt"].iter().map(|f| dest.join(f)).find(|p| p.exists()).unwrap_or_else(|| dest.join("requirements.txt"));
     if req.exists() {
         progress(app, "nodes", 50.0, &format!("{name}: python packages"));
         let _ = tokio::process::Command::new(python(root)).args(["-s", "-m", "pip", "install", "-q", "-r"]).arg(&req).creation_flags_hidden().output().await;
@@ -447,6 +454,13 @@ async fn install_node(root: &Path, repo: &str, name: &str, cancel: &AtomicBool, 
 // ---- server
 
 pub async fn start(st: &AppState) -> Result<(), String> {
+    // keep our helper nodes current for installs made by an older version
+    {
+        let root = portable_dir(st);
+        if installed(&root) {
+            let _ = install_aivs_node(&root);
+        }
+    }
     if server_up().await {
         return Ok(());
     }

@@ -1,0 +1,122 @@
+{
+ "meta": {
+  "name_en": "Video + Voice → Lip-sync (LatentSync 1.6, experimental)",
+  "name_el": "Video + Φωνή → Συγχρονισμός χειλιών (LatentSync 1.6, πειραματικό)",
+  "desc_en": "Makes the mouth in a video of a face match a voice recording. Experimental: the model wants about 18 GB of video memory (an 8 GB card will not manage; use a rented GPU), a front-facing real face, and ffmpeg. Weights use the OpenRAIL++ licence (use restrictions apply).",
+  "desc_el": "Κάνει το στόμα σε video προσώπου να ταιριάζει με μια ηχογράφηση. Πειραματικό: το μοντέλο θέλει περίπου 18 GB μνήμη γραφικών (κάρτα 8 GB δεν αρκεί· χρησιμοποίησε ενοικιαζόμενη GPU), πρόσωπο de face και ffmpeg. Τα βάρη έχουν άδεια OpenRAIL++ (ισχύουν περιορισμοί χρήσης).",
+  "good_en": "Dubbing a talking clip into another language, or making a generated character speak.",
+  "good_el": "Μεταγλώττιση clip σε άλλη γλώσσα ή ομιλία σε χαρακτήρα που έφτιαξες.",
+  "notice_en": "Only use faces and voices you have permission to use. Do not make people appear to say things they did not say.",
+  "notice_el": "Χρησιμοποίησε μόνο πρόσωπα και φωνές με άδεια. Μην κάνεις ανθρώπους να φαίνονται ότι λένε πράγματα που δεν είπαν.",
+  "kind": "lipsync",
+  "license": "Apache-2.0 code, OpenRAIL++ weights",
+  "pack": "latentsync",
+  "vram_gb": 18,
+  "est_sec": 300,
+  "priority": 240,
+  "models": [
+   "latentsync_1.6"
+  ],
+  "inputs": [
+   {
+    "key": "video",
+    "type": "video",
+    "required": true,
+    "label_en": "Video with a face",
+    "label_el": "Video με πρόσωπο"
+   },
+   {
+    "key": "audio",
+    "type": "audio",
+    "required": true,
+    "label_en": "Voice recording",
+    "label_el": "Ηχογράφηση φωνής"
+   },
+   {
+    "key": "steps",
+    "type": "int",
+    "default": 20,
+    "min": 5,
+    "max": 60,
+    "step": 1,
+    "advanced": true,
+    "label_en": "Quality steps",
+    "label_el": "Βήματα ποιότητας"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ],
+  "id": "lipsync-latentsync"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadVideoBase64",
+   "inputs": {
+    "video_b64": "{{video}}"
+   }
+  },
+  "2": {
+   "class_type": "GetVideoComponents",
+   "inputs": {
+    "video": [
+     "1",
+     0
+    ]
+   }
+  },
+  "3": {
+   "class_type": "AIVSLoadAudioBase64",
+   "inputs": {
+    "audio_b64": "{{audio}}"
+   }
+  },
+  "4": {
+   "class_type": "LatentSyncNode",
+   "inputs": {
+    "images": [
+     "2",
+     0
+    ],
+    "audio": [
+     "3",
+     0
+    ],
+    "seed": "{{seed}}",
+    "lips_expression": 1.5,
+    "inference_steps": "{{steps}}"
+   }
+  },
+  "5": {
+   "class_type": "CreateVideo",
+   "inputs": {
+    "images": [
+     "4",
+     0
+    ],
+    "audio": [
+     "4",
+     1
+    ],
+    "fps": 25
+   }
+  },
+  "6": {
+   "class_type": "SaveVideo",
+   "inputs": {
+    "video": [
+     "5",
+     0
+    ],
+    "filename_prefix": "video/lipsync",
+    "format": "mp4",
+    "codec": "auto"
+   }
+  }
+ }
+}

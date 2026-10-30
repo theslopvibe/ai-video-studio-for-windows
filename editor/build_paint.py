@@ -15,7 +15,10 @@ DEST = HERE.parent / "app" / "src-tauri" / "paint-dist"
 AI_MENU = """	{
 		name: 'AI',
 		children: [
-			{ name: 'Generate image into layer', ellipsis: true, target: 'ai/ai.generate' }
+			{ name: 'Generate image into layer', ellipsis: true, target: 'ai/ai.generate' },
+			{ name: 'Change picture with words', ellipsis: true, target: 'ai/ai.edit' },
+			{ name: 'Upscale layer (sharper, 4x larger)', target: 'ai/ai.upscale' },
+			{ name: 'Remove background', target: 'ai/ai.remove_background' }
 		]
 	},
 	{

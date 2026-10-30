@@ -25,19 +25,23 @@
   });
 
   // Image editor → app: the AI menu inside the editor asks for a picture, we run a job and answer with the file.
-  async function handleAi(msg: { avs?: string; id: string; op: string; prompt?: string; width?: number; height?: number }) {
+  async function handleAi(msg: { avs?: string; id: string; op: string; prompt?: string; width?: number; height?: number; image?: string }) {
     if (msg?.avs !== "ai") return;
     const reply = (r: { image?: string; error?: string }) => paintFrame?.contentWindow?.postMessage({ avs: "ai-result", id: msg.id, ...r }, "*");
     try {
-      if (msg.op !== "generate") throw new Error(el ? "Αυτό το εργαλείο δεν υπάρχει ακόμα." : "This tool is not available yet.");
-      const wf = S.workflows.filter((w) => w.meta.kind === "t2i").sort((a, b) => (b.meta.priority ?? 0) - (a.meta.priority ?? 0))[0];
-      if (!wf) throw new Error(el ? "Δεν υπάρχει μοντέλο εικόνας. Πρόσθεσε ένα στα Models." : "No image model found. Add one in Models.");
+      // each menu entry is just a workflow: new tools only need a workflow file
+      const TOOL: Record<string, string> = { upscale: "upscale-realesrgan", remove_background: "rmbg-birefnet", edit: "qwen-image-edit" };
+      const wf = msg.op === "generate"
+        ? S.workflows.filter((w) => w.meta.kind === "t2i").sort((a, b) => (b.meta.priority ?? 0) - (a.meta.priority ?? 0))[0]
+        : S.workflows.find((w) => w.meta.id === TOOL[msg.op]);
+      if (!wf) throw new Error(msg.op === "generate" ? (el ? "Δεν υπάρχει μοντέλο εικόνας. Πρόσθεσε ένα στα Models." : "No image model found. Add one in Models.") : (el ? "Αυτό το εργαλείο δεν υπάρχει ακόμα." : "This tool is not available yet."));
       const keys = new Set(wf.meta.inputs.map((i) => i.key));
       const snap = (n: number) => Math.min(1536, Math.max(256, Math.round(n / 64) * 64));
       const params: Record<string, unknown> = {};
       if (keys.has("width")) params.width = snap(msg.width ?? 1024);
       if (keys.has("height")) params.height = snap(msg.height ?? 1024);
-      const job = await api.enqueue(S.projectId, wf.meta.id, String(msg.prompt ?? ""), params);
+      if (keys.has("image") && msg.image) params.image = msg.image.replace(/^data:[^,]*,/, "");
+      const job = await api.enqueue(S.projectId, wf.meta.id, String(msg.prompt || wf.meta.name_en), params);
       for (;;) {
         await new Promise((r) => setTimeout(r, 1500));
         const j = (await api.jobs()).find((x) => x.id === job.id);

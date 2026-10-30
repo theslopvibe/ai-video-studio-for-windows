@@ -462,19 +462,22 @@ async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<S
 pub fn studio_system(st: &AppState) -> String {
     let (wfs, _) = st.load_workflows();
     let mut cat = String::new();
-    for w in wfs.iter().filter(|w| matches!(w.meta.kind.as_str(), "t2v" | "t2i" | "t2a")) {
+    for w in wfs.iter() {
         let m = &w.meta;
-        let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image")).collect();
+        let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image") && !k.starts_with("audio") && !k.starts_with("video")).collect();
+        let needs: Vec<String> = m.inputs.iter().filter(|i| matches!(i.ty.as_str(), "image" | "audio" | "video")).map(|i| format!("{}:{}", i.key, i.ty)).collect();
+        let langs = if m.languages.is_empty() { String::new() } else { format!(" | languages: {}", m.languages.join(", ")) };
         let cost = if m.provider.is_empty() { format!("open source, ~{}s on a GPU", m.est_sec) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
-        cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {}
-", m.id, m.name_en, m.kind, cost, m.good_en, keys.join(",")));
+        cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {} | inputs: {}{}
+", m.id, m.name_en, m.kind, cost, m.good_en, keys.join(","), if needs.is_empty() { "none".into() } else { needs.join(",") }, langs));
     }
     format!(
         "You are the assistant inside AI Video Studio, an app that makes videos and images from prompts. Reply in the user's language, briefly. Ask at most one short question and only if essential. Recommend a model for the task (one line: why, speed, price). Write the prompt in English: subject, one action, setting, light, camera, style, one continuous shot.
 To queue a result add one block per clip, exactly:
 ```video
-{{\"workflow\":\"<id>\",\"prompt\":\"<English prompt>\",\"params\":{{}}}}
+{{\"workflow\":\"<id>\",\"prompt\":\"<English prompt or the text to speak>\",\"params\":{{}}}}
 ```
+Steps can be chained: give a block an \"id\" (e.g. \"a\") and in a later block set \"inputs\":{{\"image\":\"@a\"}} to feed it the result of block a (keys come from that model's \"inputs\"; use \"@last\" for the user's most recent finished result of the right type). Typical chains: picture (t2i) -> video (i2v) ; text -> voice (tts) -> lip-sync (lipsync, needs a video with a face + the voice) ; video -> smoother (v2v). If a step needs a file only the user has (a voice sample, a recording, a photo), leave it out of \"inputs\": the card asks them to choose it. Before suggesting voice cloning, voice change or lip-sync on a real person, remind the user to use only their own voice/face or one they have permission for. When asked about languages, answer from the \"languages\" field. If nothing in the list fits, say so; never invent ids.
 The app shows the user a card with the price and a Generate button, so never say it is already generating. Use only ids from the list; put only keys from that model's params in \"params\" (e.g. width, height, length, fps) and leave it empty when unsure. For several scenes write several blocks in order. For music pick a t2a model: prompt = style tags, params lyrics (or [instrumental]) and seconds. Image-to-video needs a start image: tell the user to use the Generate page for that.
 Default run mode: {}.
 Models (id | name | kind | cost | use | params):

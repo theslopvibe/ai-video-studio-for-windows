@@ -1,0 +1,68 @@
+{
+ "meta": {
+  "name_en": "Picture → Remove background (BiRefNet)",
+  "name_el": "Εικόνα → Αφαίρεση φόντου (BiRefNet)",
+  "desc_en": "Cuts out the subject and makes the background transparent (PNG). Runs on your PC, about 2-4 GB VRAM, model downloads on first use (about 0.4 GB).",
+  "desc_el": "Κόβει το θέμα και κάνει το φόντο διαφανές (PNG). Τρέχει στον υπολογιστή σου, περίπου 2-4 GB VRAM, το μοντέλο κατεβαίνει στην πρώτη χρήση (περίπου 0.4 GB).",
+  "good_en": "Product photos, stickers, thumbnails, putting a person on a new background.",
+  "good_el": "Φωτογραφίες προϊόντων, αυτοκόλλητα, thumbnails, αλλαγή φόντου.",
+  "kind": "i2i",
+  "license": "MIT",
+  "pack": "birefnet",
+  "vram_gb": 4,
+  "est_sec": 15,
+  "priority": 200,
+  "models": [
+   "birefnet"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   }
+  ],
+  "id": "rmbg-birefnet"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "AutoDownloadBiRefNetModel",
+   "inputs": {
+    "model_name": "General",
+    "device": "AUTO",
+    "dtype": "float32"
+   }
+  },
+  "3": {
+   "class_type": "RembgByBiRefNet",
+   "inputs": {
+    "model": [
+     "2",
+     0
+    ],
+    "images": [
+     "1",
+     0
+    ]
+   }
+  },
+  "4": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "3",
+     0
+    ],
+    "filename_prefix": "nobg"
+   }
+  }
+ }
+}

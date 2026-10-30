@@ -27,6 +27,17 @@ class AI_class {
 		});
 	}
 
+	// the active layer as PNG (only that layer, with its transparency)
+	layer_png() {
+		const layer = app.Layers.get_layer();
+		if (!layer || !layer.type) return null;
+		const canvas = document.createElement('canvas');
+		canvas.width = config.WIDTH;
+		canvas.height = config.HEIGHT;
+		app.Layers.convert_layers_to_canvas(canvas.getContext('2d'), layer.id, false);
+		return { layer, png: canvas.toDataURL('image/png') };
+	}
+
 	insert(dataUrl, name) {
 		const img = new Image();
 		img.onload = () => {
@@ -54,6 +65,28 @@ class AI_class {
 			title: 'Generate image into a layer',
 			params: [{ name: 'prompt', title: 'Describe the image:', value: '' }],
 			on_finish: (p) => { if (p.prompt.trim()) this.run('generate', { prompt: p.prompt.trim(), width: config.WIDTH || 1024, height: config.HEIGHT || 1024 }, 'AI image'); },
+		});
+	}
+
+	upscale() {
+		const l = this.layer_png();
+		if (!l) return alertify.error('Select a layer with an image first.');
+		this.run('upscale', { image: l.png }, 'Upscaled ' + (l.layer.name || ''));
+	}
+
+	remove_background() {
+		const l = this.layer_png();
+		if (!l) return alertify.error('Select a layer with an image first.');
+		this.run('remove_background', { image: l.png }, 'No background ' + (l.layer.name || ''));
+	}
+
+	edit() {
+		const l = this.layer_png();
+		if (!l) return alertify.error('Select a layer with an image first.');
+		this.POP.show({
+			title: 'Change the picture with words',
+			params: [{ name: 'prompt', title: 'What should change?', value: '' }],
+			on_finish: (p) => { if (p.prompt.trim()) this.run('edit', { image: l.png, prompt: p.prompt.trim() }, 'AI edit'); },
 		});
 	}
 }

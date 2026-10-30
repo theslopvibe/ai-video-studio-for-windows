@@ -241,8 +241,20 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
         }
         None => false,
     };
+    // chained / uploaded inputs: {"audio": "job:<id>"} (a finished result) or {"audio": "C:\path\voice.wav"} (a file on this PC)
+    if let Some(map) = b["inputs"].as_object() {
+        for (k, v) in map {
+            let Some(v) = v.as_str().filter(|v| !v.is_empty()) else { continue };
+            if !["image", "audio", "video"].iter().any(|p| k == p || k.starts_with(&format!("{p}_"))) {
+                return Err(format!("\"{k}\" is not a media input (use image, audio or video keys)."));
+            }
+            let val = if v.starts_with("job:") { v.to_string() } else { crate::stash_input(st, std::path::Path::new(v), &uuid::Uuid::new_v4().simple().to_string())? };
+            params.insert(k.clone(), json!(val));
+        }
+    }
     let (wfs, _) = st.load_workflows();
-    let wanted_kind = if b["kind"] == "audio" { "t2a" } else if b["kind"] == "image" { "t2i" } else if has_end { "flf2v" } else if has_start { "i2v" } else { "t2v" };
+    let wanted_kind = if matches!(b["kind"].as_str(), Some("tts" | "vc" | "i2i" | "v2v" | "lipsync")) { b["kind"].as_str().unwrap() }
+        else if b["kind"] == "audio" { "t2a" } else if b["kind"] == "image" { "t2i" } else if has_end { "flf2v" } else if has_start { "i2v" } else { "t2v" };
     let wf_id = match b["workflow_id"].as_str().filter(|w| !w.is_empty()) {
         Some(q) => resolve_workflow(&wfs, q, wanted_kind)?,
         None => {

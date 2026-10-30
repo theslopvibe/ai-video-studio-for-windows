@@ -171,5 +171,217 @@
     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors"
    }
   ]
+ },
+ {
+  "id": "chatterbox",
+  "name": "Chatterbox voice (23 languages, cloning)",
+  "kind": "audio",
+  "license": "MIT",
+  "vram_gb": 8,
+  "size_gb": 3.2,
+  "desc_el": "Φωνή από κείμενο σε 23 γλώσσες (και ελληνικά) και κλωνοποίηση φωνής με δικό σου δείγμα.",
+  "desc_en": "Text to speech in 23 languages (Greek included) and voice cloning from your own sample.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/filliptm/ComfyUI_Fill-ChatterBox",
+    "name": "ComfyUI_Fill-ChatterBox"
+   }
+  ],
+  "files": [
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/ve.pt"
+   },
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/t3_mtl23ls_v2.safetensors"
+   },
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/s3gen.pt"
+   },
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/grapheme_mtl_merged_expanded_v1.json"
+   },
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/conds.pt"
+   },
+   {
+    "dir": "chatterbox/chatterbox_multilingual",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/Cangjie5_TC.json"
+   }
+  ]
+ },
+ {
+  "id": "chatterbox-vc",
+  "name": "Chatterbox voice changer",
+  "kind": "audio",
+  "license": "MIT",
+  "vram_gb": 6,
+  "size_gb": 1.1,
+  "desc_el": "Αλλάζει τη φωνή μιας ηχογράφησης σε παρόμοια με ένα δείγμα.",
+  "desc_en": "Changes the voice of a recording to sound like a sample.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/filliptm/ComfyUI_Fill-ChatterBox",
+    "name": "ComfyUI_Fill-ChatterBox"
+   }
+  ],
+  "files": [
+   {
+    "dir": "chatterbox/chatterbox_vc",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/s3gen.pt"
+   },
+   {
+    "dir": "chatterbox/chatterbox_vc",
+    "url": "https://huggingface.co/ResembleAI/chatterbox/resolve/main/conds.pt"
+   }
+  ]
+ },
+ {
+  "id": "kokoro",
+  "name": "Kokoro voice (fast, 9 languages)",
+  "kind": "audio",
+  "license": "Apache-2.0",
+  "vram_gb": 0,
+  "size_gb": 0.35,
+  "desc_el": "Ελαφριά φωνή από κείμενο, τρέχει στον επεξεργαστή. Τα μοντέλα κατεβαίνουν στην πρώτη χρήση.",
+  "desc_en": "Light text-to-speech that runs on the processor. Model files download on first use.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/stavsap/comfyui-kokoro",
+    "name": "comfyui-kokoro"
+   }
+  ],
+  "files": []
+ },
+ {
+  "id": "birefnet",
+  "name": "Remove background (BiRefNet)",
+  "kind": "image",
+  "license": "MIT",
+  "vram_gb": 4,
+  "size_gb": 0.45,
+  "desc_el": "Αφαίρεση φόντου. Το μοντέλο κατεβαίνει στην πρώτη χρήση.",
+  "desc_en": "Background removal. The model downloads on first use.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/lldacing/ComfyUI_BiRefNet_ll",
+    "name": "ComfyUI_BiRefNet_ll"
+   }
+  ],
+  "files": []
+ },
+ {
+  "id": "realesrgan",
+  "name": "Upscaler (Real-ESRGAN x4)",
+  "kind": "image",
+  "license": "BSD-3-Clause",
+  "vram_gb": 3,
+  "size_gb": 0.07,
+  "desc_el": "Μεγέθυνση εικόνων ×4.",
+  "desc_en": "Picture upscaler, 4x.",
+  "in_template": false,
+  "nodes": [],
+  "files": [
+   {
+    "dir": "upscale_models",
+    "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+   }
+  ]
+ },
+ {
+  "id": "qwen-image-edit",
+  "name": "Edit pictures with words (Qwen-Image-Edit 2511, GGUF)",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 8,
+  "size_gb": 23.3,
+  "desc_el": "Επεξεργασία εικόνων με περιγραφή. Βαρύ: περίπου 23 GB.",
+  "desc_en": "Edit pictures from a description. Heavy: about 23 GB.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/city96/ComfyUI-GGUF",
+    "name": "ComfyUI-GGUF"
+   }
+  ],
+  "files": [
+   {
+    "dir": "unet",
+    "url": "https://huggingface.co/unsloth/Qwen-Image-Edit-2511-GGUF/resolve/main/qwen-image-edit-2511-Q4_K_M.gguf"
+   },
+   {
+    "dir": "text_encoders",
+    "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors"
+   },
+   {
+    "dir": "loras",
+    "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+   }
+  ]
+ },
+ {
+  "id": "frame-interp",
+  "name": "Smoother motion (RIFE)",
+  "kind": "video",
+  "license": "MIT",
+  "vram_gb": 4,
+  "size_gb": 0.03,
+  "desc_el": "Διπλασιάζει τα καρέ ενός video. Το μοντέλο κατεβαίνει στην πρώτη χρήση.",
+  "desc_en": "Doubles the frames of a video. The model downloads on first use.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation",
+    "name": "ComfyUI-Frame-Interpolation"
+   }
+  ],
+  "files": []
+ },
+ {
+  "id": "latentsync",
+  "name": "Lip-sync (LatentSync 1.6, experimental)",
+  "kind": "video",
+  "license": "Apache-2.0 / OpenRAIL++",
+  "vram_gb": 18,
+  "size_gb": 7.1,
+  "desc_el": "Συγχρονισμός χειλιών. Πειραματικό, θέλει πολλή μνήμη γραφικών.",
+  "desc_en": "Lip-sync. Experimental, needs a lot of video memory.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/ShmuelRonen/ComfyUI-LatentSyncWrapper",
+    "name": "ComfyUI-LatentSyncWrapper"
+   }
+  ],
+  "files": [
+   {
+    "dir": "@custom_nodes/ComfyUI-LatentSyncWrapper/checkpoints",
+    "url": "https://huggingface.co/ByteDance/LatentSync-1.6/resolve/main/latentsync_unet.pt"
+   },
+   {
+    "dir": "@custom_nodes/ComfyUI-LatentSyncWrapper/checkpoints/whisper",
+    "url": "https://huggingface.co/ByteDance/LatentSync-1.6/resolve/main/whisper/tiny.pt"
+   },
+   {
+    "dir": "@custom_nodes/ComfyUI-LatentSyncWrapper/checkpoints/vae",
+    "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/diffusion_pytorch_model.safetensors"
+   },
+   {
+    "dir": "@custom_nodes/ComfyUI-LatentSyncWrapper/checkpoints/vae",
+    "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json"
+   }
+  ]
  }
 ]

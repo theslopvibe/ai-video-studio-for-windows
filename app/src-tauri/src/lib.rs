@@ -18,7 +18,7 @@ use db::{Db, Job, Project};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
@@ -123,6 +123,59 @@ fn reload_workflows(st: State<AppState>) -> (Vec<workflows::Workflow>, Vec<Strin
 }
 
 /// Only files inside the app's own `inputs` folder may be read or deleted through a `file:` job parameter.
+const MEDIA_EXT: &[&str] = &["png", "jpg", "jpeg", "webp", "mp3", "wav", "flac", "ogg", "opus", "m4a", "mp4", "webm", "mov", "mkv"];
+
+fn is_media_key(k: &str) -> bool {
+    ["image", "audio", "video"].iter().any(|p| k == *p || k.strip_prefix(p).is_some_and(|r| r.starts_with('_')))
+}
+
+/// Copies a picture, sound or clip into the inputs folder and returns the `file:` reference jobs use.
+pub fn stash_input(st: &AppState, src: &Path, tag: &str) -> Result<String, String> {
+    let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !MEDIA_EXT.contains(&ext.as_str()) {
+        return Err(format!("Unsupported file type: .{ext}"));
+    }
+    let meta = std::fs::metadata(src).map_err(e)?;
+    if !meta.is_file() || meta.len() > 600 << 20 {
+        return Err("The file is missing or too large (limit 600 MB).".into());
+    }
+    let dir = st.data_dir.join("inputs");
+    std::fs::create_dir_all(&dir).map_err(e)?;
+    let dest = dir.join(format!("{tag}.{ext}"));
+    std::fs::copy(src, &dest).map_err(e)?;
+    Ok(format!("file:{}", dest.to_string_lossy()))
+}
+
+/// `job:<id>` in an image/audio/video parameter means "the result of that earlier job": this is how results are chained
+/// (picture → video → voice → lip-sync) from the UI, the chat and the MCP tools without anyone handling file paths.
+pub fn resolve_media_refs(st: &AppState, job_id: &str, p: &mut Map<String, Value>, run_now: bool) -> R<()> {
+    let keys: Vec<String> = p.keys().filter(|k| is_media_key(k)).cloned().collect();
+    for k in keys {
+        let Some(Value::String(v)) = p.get(&k).cloned() else { continue };
+        if let Some(id) = v.strip_prefix("job:") {
+            let job = st.db.jobs(None).map_err(e)?.into_iter().find(|j| j.id == id.trim()).ok_or("The earlier result was not found.")?;
+            if job.status != "done" || job.file_path.is_empty() {
+                // queued behind it: the reference is resolved when this job starts (the queue runs jobs in order)
+                if !run_now && matches!(job.status.as_str(), "queued" | "routing" | "generating" | "downloading") {
+                    continue;
+                }
+                return Err("That earlier result is not available (it failed, was cancelled or is not finished).".into());
+            }
+            p.insert(k.clone(), json!(stash_input(st, Path::new(&job.file_path), &format!("{job_id}-{k}"))?));
+        } else if let Some(path) = v.strip_prefix("file:") {
+            if !is_input_file(st, path) {
+                return Err("File reference outside the inputs folder.".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn input_import(st: State<AppState>, path: String) -> R<String> {
+    stash_input(&st, Path::new(&path), &uuid::Uuid::new_v4().simple().to_string())
+}
+
 pub fn is_input_file(st: &AppState, path: &str) -> bool {
     match (std::fs::canonicalize(path), std::fs::canonicalize(st.data_dir.join("inputs"))) {
         (Ok(p), Ok(dir)) => p.starts_with(dir),
@@ -201,11 +254,15 @@ fn job_enqueue(
     let mut p = params;
     let job_id = uuid::Uuid::new_v4().to_string();
     // Start/end images (base64 JPEG from the UI) are kept as files so the jobs table stays small and retry works.
+    resolve_media_refs(&st, &job_id, &mut p, false)?;
     let image_keys: Vec<String> = p.keys().filter(|k| *k == "image" || k.starts_with("image_")).cloned().collect();
     for k in image_keys {
         let Some(Value::String(b64)) = p.get(&k).cloned() else { continue };
         if b64.is_empty() {
             p.remove(&k);
+            continue;
+        }
+        if b64.starts_with("file:") || b64.starts_with("job:") {
             continue;
         }
         use base64::Engine;
@@ -885,7 +942,7 @@ pub fn run() {
             gpu_offers, apply_gpus, install_on_workers, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
-            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url
+            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

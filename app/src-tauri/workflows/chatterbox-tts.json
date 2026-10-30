@@ -1,0 +1,123 @@
+{
+ "meta": {
+  "name_en": "Text → Voice: Chatterbox (23 languages)",
+  "name_el": "Κείμενο → Φωνή: Chatterbox (23 γλώσσες)",
+  "desc_en": "Reads your text aloud in 23 languages including Greek, English, Spanish, Chinese, Hindi and Arabic. Runs on your PC (about 8 GB VRAM). Needs “Chatterbox voice” installed.",
+  "desc_el": "Διαβάζει το κείμενό σου σε 23 γλώσσες, και ελληνικά. Τρέχει στον υπολογιστή σου (περίπου 8 GB VRAM). Χρειάζεται το «Chatterbox φωνή».",
+  "good_en": "Narration and voice-over in many languages with a natural default voice. Free, local.",
+  "good_el": "Αφήγηση και voice-over σε πολλές γλώσσες με φυσική φωνή. Δωρεάν, τοπικά.",
+  "priority": 100,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_en": "Text to speak",
+    "label_el": "Κείμενο προς ομιλία"
+   },
+   {
+    "key": "language",
+    "type": "text",
+    "default": "Greek (el)",
+    "options": [
+     "Arabic (ar)",
+     "Danish (da)",
+     "German (de)",
+     "Greek (el)",
+     "English (en)",
+     "Spanish (es)",
+     "Finnish (fi)",
+     "French (fr)",
+     "Hebrew (he)",
+     "Hindi (hi)",
+     "Italian (it)",
+     "Japanese (ja)",
+     "Korean (ko)",
+     "Malay (ms)",
+     "Dutch (nl)",
+     "Norwegian (no)",
+     "Polish (pl)",
+     "Portuguese (pt)",
+     "Russian (ru)",
+     "Swedish (sv)",
+     "Swahili (sw)",
+     "Turkish (tr)",
+     "Chinese (zh)"
+    ],
+    "label_en": "Language",
+    "label_el": "Γλώσσα"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ],
+  "kind": "tts",
+  "license": "MIT",
+  "pack": "chatterbox",
+  "vram_gb": 8,
+  "est_sec": 40,
+  "languages": [
+   "Arabic",
+   "Danish",
+   "German",
+   "Greek",
+   "English",
+   "Spanish",
+   "Finnish",
+   "French",
+   "Hebrew",
+   "Hindi",
+   "Italian",
+   "Japanese",
+   "Korean",
+   "Malay",
+   "Dutch",
+   "Norwegian",
+   "Polish",
+   "Portuguese",
+   "Russian",
+   "Swedish",
+   "Swahili",
+   "Turkish",
+   "Chinese"
+  ],
+  "models": [
+   "chatterbox_multilingual"
+  ],
+  "id": "chatterbox-tts"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "FL_ChatterboxMultilingualTTS",
+   "inputs": {
+    "text": "{{prompt}}",
+    "language": "{{language}}",
+    "exaggeration": 0.5,
+    "cfg_weight": 0.5,
+    "temperature": 0.8,
+    "repetition_penalty": 2.0,
+    "min_p": 0.05,
+    "top_p": 1.0,
+    "seed": "{{seed}}",
+    "use_cpu": false,
+    "keep_model_loaded": false
+   }
+  },
+  "2": {
+   "class_type": "SaveAudioMP3",
+   "inputs": {
+    "audio": [
+     "1",
+     0
+    ],
+    "filename_prefix": "audio/tts",
+    "quality": "V0"
+   }
+  }
+ }
+}

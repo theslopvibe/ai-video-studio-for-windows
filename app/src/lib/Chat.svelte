@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { ask as askDialog } from "@tauri-apps/plugin-dialog";
+  import { ask as askDialog, open as pickDialog } from "@tauri-apps/plugin-dialog";
   import { api, type Chat, type ChatFolder, type ChatMessage, type ChatProvider } from "./api";
   import { S } from "./store.svelte";
   import { ct, type CKey } from "./chatStrings";
@@ -22,14 +22,17 @@
   let box: HTMLDivElement | undefined = $state();
 
   // "Create video with chat": the assistant adds ```video {...}``` blocks; each becomes a card the user confirms.
-  type Card = { workflow: string; prompt: string; params: Record<string, unknown> };
+  type Card = { id?: string; workflow: string; prompt: string; params: Record<string, unknown>; inputs: Record<string, string> };
   let done = $state<Record<string, boolean>>({});
+  let jobOf = $state<Record<string, string>>({}); // card key -> queued job id (so later steps can use its result)
+  let picked = $state<Record<string, Record<string, string>>>({}); // card key -> media slot -> file the user chose
+  const kindOfFile = (f: string) => (/\.(png|jpe?g|webp|gif)$/i.test(f) ? "image" : /\.(mp3|flac|wav|ogg|opus|m4a)$/i.test(f) ? "audio" : "video");
   function parse(content: string): { text: string; cards: Card[] } {
     const cards: Card[] = [];
     const text = content.replace(/```video\s*([\s\S]*?)```/g, (whole, body: string) => {
       try {
         const v = JSON.parse(body.trim());
-        for (const c of Array.isArray(v) ? v : [v]) if (c && typeof c.workflow === "string" && typeof c.prompt === "string") cards.push({ workflow: c.workflow, prompt: c.prompt, params: c.params && typeof c.params === "object" ? c.params : {} });
+        for (const c of Array.isArray(v) ? v : [v]) if (c && typeof c.workflow === "string" && typeof c.prompt === "string") cards.push({ id: typeof c.id === "string" ? c.id : undefined, workflow: c.workflow, prompt: c.prompt, params: c.params && typeof c.params === "object" ? c.params : {}, inputs: c.inputs && typeof c.inputs === "object" ? Object.fromEntries(Object.entries(c.inputs).filter(([, v]) => typeof v === "string")) as Record<string, string> : {} });
       } catch { return whole; } // a broken block stays visible as plain text
       return "";
     }).trim();
@@ -42,13 +45,47 @@
     if (!w) return 0;
     return w.meta.provider ? (w.meta.est_usd ?? 0) : S.dph > 0 ? (w.meta.est_sec * S.dph) / 3600 : 0;
   }
-  async function generate(key: string, c: Card) {
-    if (!wfOf(c.workflow)) return S.notify(t("bad_model") + " " + c.workflow, true);
+  const MEDIA_TYPES = ["image", "audio", "video"];
+  const slotsOf = (c: Card) => (wfOf(c.workflow)?.meta.inputs ?? []).filter((i) => MEDIA_TYPES.includes(i.type));
+  async function generate(key: string, c: Card, group: Card[] = [], base = ""): Promise<boolean> {
+    const w = wfOf(c.workflow);
+    if (!w) { S.notify(t("bad_model") + " " + c.workflow, true); return false; }
     // the model's params are untrusted: keep only this workflow's own numeric/text inputs (no gpu, provider, images, seed)
-    const allowed = new Set(wfOf(c.workflow)!.meta.inputs.map((i) => i.key).filter((k) => !["prompt", "negative", "seed"].includes(k) && !k.startsWith("image")));
-    const params = Object.fromEntries(Object.entries(c.params).filter(([k, v]) => allowed.has(k) && (typeof v === "number" || typeof v === "string")));
+    const allowed = new Set(w.meta.inputs.map((i) => i.key).filter((k) => !["prompt", "negative", "seed"].includes(k) && !MEDIA_TYPES.some((m) => k === m || k.startsWith(m + "_"))));
+    const params: Record<string, unknown> = Object.fromEntries(Object.entries(c.params).filter(([k, v]) => allowed.has(k) && (typeof v === "number" || typeof v === "string")));
+    // chained inputs: "@id" = result of an earlier card of this reply (queued first if needed), "@last" = newest finished result of that type
+    for (const slot of slotsOf(c)) {
+      const ref = c.inputs[slot.key];
+      if (picked[key]?.[slot.key]) { params[slot.key] = picked[key][slot.key]; continue; }
+      if (!ref) continue;
+      if (ref === "@last") {
+        const last = S.jobs.filter((j) => j.status === "done" && j.file_path && kindOfFile(j.file_path) === slot.type).sort((a, b) => b.finished_at - a.finished_at)[0];
+        if (last) params[slot.key] = "job:" + last.id;
+      } else if (ref.startsWith("@")) {
+        const idx = group.findIndex((g) => g.id === ref.slice(1));
+        if (idx < 0) continue;
+        const dep = base + ":" + idx;
+        if (!jobOf[dep] && !(await generate(dep, group[idx], group, base))) return false;
+        params[slot.key] = "job:" + jobOf[dep];
+      }
+    }
+    const missing = slotsOf(c).find((s) => s.required && !params[s.key]);
+    if (missing) { S.notify((S.lang === "el" ? "Διάλεξε πρώτα αρχείο: " : "Choose a file first: ") + ((S.lang === "el" ? missing.label_el : missing.label_en) || missing.key), true); return false; }
     const j = await S.run(() => api.enqueue(S.projectId, c.workflow, c.prompt, params));
-    if (j) { S.upsert(j); done[key] = true; S.notify(t("queued_card")); }
+    if (!j) return false;
+    S.upsert(j); done[key] = true; jobOf[key] = j.id; S.notify(t("queued_card"));
+    return true;
+  }
+  async function runAll(msgId: string, cards: Card[]) {
+    for (let i = 0; i < cards.length; i++) {
+      const k = msgId + ":" + i;
+      if (!done[k] && !(await generate(k, cards[i], cards, msgId))) return;
+    }
+  }
+  async function chooseFile(key: string, slot: { key: string; type: string }) {
+    const ext: Record<string, string[]> = { image: ["png", "jpg", "jpeg", "webp"], audio: ["mp3", "wav", "flac", "ogg", "opus", "m4a"], video: ["mp4", "webm", "mov", "mkv"] };
+    const f = await pickDialog({ multiple: false, filters: [{ name: slot.type, extensions: ext[slot.type] }] });
+    if (typeof f === "string") { const ref = await S.run(() => api.inputImport(f)); if (ref) picked[key] = { ...(picked[key] ?? {}), [slot.key]: ref }; }
   }
   function editInGenerate(c: Card) { S.draft = { prompt: c.prompt, workflow: c.workflow }; S.page = "generate"; }
 
@@ -203,15 +240,23 @@
                 <div class="row"><b class="grow">{wfName(c.workflow)}</b>{#if estimate(c.workflow) > 0}<span class="small dim">{t("est")} ~${estimate(c.workflow).toFixed(2)}</span>{/if}</div>
                 <p class="vprompt">{c.prompt}</p>
                 {#if Object.keys(c.params).length}<p class="small dim">{Object.entries(c.params).map(([a, b]) => `${a}: ${b}`).join(" · ")}</p>{/if}
+                {#each slotsOf(c).filter((x) => !c.inputs[x.key] || picked[k]?.[x.key]) as sl (sl.key)}
+                  <div class="row small"><span class="dim">{(S.lang === "el" ? sl.label_el : sl.label_en) || sl.key}{sl.required ? " *" : ""}:</span>
+                    <button class="ghost small" onclick={() => chooseFile(k, sl)}>{picked[k]?.[sl.key] ? "✓ " : ""}{S.lang === "el" ? "Διάλεξε αρχείο…" : "Choose file…"}</button></div>
+                {/each}
+                {#if wfOf(c.workflow)?.meta.notice_en}<p class="small msg err">{S.lang === "el" ? wfOf(c.workflow)?.meta.notice_el : wfOf(c.workflow)?.meta.notice_en}</p>{/if}
                 <div class="row">
                   {#if done[k]}<span class="small">✓ {t("queued_card")}</span>
                   {:else}
-                    <button class="primary" onclick={() => generate(k, c)}>▶ {t("gen_now")}</button>
+                    <button class="primary" onclick={() => generate(k, c, p.cards, m.id)}>▶ {t("gen_now")}</button>
                     <button class="ghost" onclick={() => editInGenerate(c)}>{t("edit_in_gen")}</button>
                   {/if}
                 </div>
               </div>
             {/each}
+            {#if p.cards.length > 1 && p.cards.some((_, i) => !done[m.id + ":" + i])}
+              <div class="acts"><button class="primary small" onclick={() => runAll(m.id, p.cards)}>▶▶ {S.lang === "el" ? "Όλα τα βήματα με τη σειρά" : "Run all steps in order"}</button></div>
+            {/if}
             {#if m.role === "assistant" && open.mode !== "studio"}
               <div class="acts">
                 <button class="ghost small" onclick={() => copy(m.content)}>{t("copy")}</button>

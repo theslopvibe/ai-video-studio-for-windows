@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Everything chains: "Make more from this…" in the Library turns any result into the next step (picture to video, video to smoother motion, voice to lip-sync). The Create page has two new tabs, Voice and Tools. Chat and the Claude Desktop extension can run the same chains (`job:<id>` references, `inputs`).
+- Voice: Chatterbox (23 languages incl. Greek, voice cloning from your own sample, voice changer, MIT) and Kokoro (fast, 9 languages, CPU). Each mode lists its languages.
+- Picture tools: background removal (BiRefNet), 4x upscale (Real-ESRGAN), edit with words (Qwen-Image-Edit). Also in the image editor's AI menu.
+- Video tools: smoother motion (RIFE), lip-sync (LatentSync, experimental, needs ~18 GB video memory).
+- Not included on purpose: face swap (the usual InsightFace models forbid commercial use) and other non-commercial models.
+- Model packs can install custom nodes and keep weights next to them; modes can declare drop-down choices, languages and a safety notice.
+
 - Image editor (miniPaint, MIT) next to the video editor, with an AI menu: generate an image into a layer.
 
 - Setup wizard: hardware scan, one-click local ComfyUI install, models that fit your graphics card, first video.

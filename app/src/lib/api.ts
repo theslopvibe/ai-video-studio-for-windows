@@ -3,12 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 export type InputDef = {
   key: string; type: "text" | "int" | "float" | "seed" | "image"; default?: unknown;
   min?: number; max?: number; step?: number; required?: boolean; advanced?: boolean;
-  label_el: string; label_en: string;
+  label_el: string; label_en: string; options?: string[];
 };
 export type Workflow = {
   meta: {
     id: string; name_el: string; name_en: string; desc_el: string; desc_en: string;
-    kind: string; models: string[]; vram_gb: number; est_sec: number; pack?: string; priority?: number; inputs: InputDef[]; provider?: string; model?: string; est_usd?: number; license?: string; good_en?: string; good_el?: string;
+    kind: string; models: string[]; vram_gb: number; est_sec: number; pack?: string; priority?: number; inputs: InputDef[]; provider?: string; model?: string; est_usd?: number; license?: string; good_en?: string; good_el?: string; languages?: string[]; notice_en?: string; notice_el?: string;
   };
   source: string; file: string;
 };
@@ -75,6 +75,7 @@ export const api = {
   chatMessages: (id: string) => invoke<ChatMessage[]>("chat_messages", { id }),
   chatMessageDelete: (id: string) => invoke<void>("chat_message_delete", { id }),
   editorUrl: () => invoke<string | null>("editor_url"),
+  inputImport: (path: string) => invoke<string>("input_import", { path }),
   paintUrl: () => invoke<string | null>("paint_url"),
   imageDataUrl: (path: string) => invoke<string>("image_data_url", { path }),
   chatSend: (id: string, text: string) => invoke<ChatMessage[]>("chat_send", { id, text }),

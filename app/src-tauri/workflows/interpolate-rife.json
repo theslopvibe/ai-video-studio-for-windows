@@ -1,0 +1,100 @@
+{
+ "meta": {
+  "name_en": "Video → Smoother motion (RIFE, 2x frames)",
+  "name_el": "Video → Πιο ομαλή κίνηση (RIFE, διπλάσια καρέ)",
+  "desc_en": "Doubles the number of frames so motion looks smoother (24 → 48 fps). Set the output fps to twice the clip's own fps. Light, runs on your PC.",
+  "desc_el": "Διπλασιάζει τα καρέ ώστε η κίνηση να φαίνεται πιο ομαλή (24 → 48 fps). Βάλε fps εξόδου διπλάσια από του clip. Ελαφρύ, τρέχει στον υπολογιστή σου.",
+  "good_en": "Make AI videos feel smoother, or prepare slow motion.",
+  "good_el": "Πιο ομαλά AI video ή προετοιμασία slow motion.",
+  "kind": "v2v",
+  "license": "MIT",
+  "pack": "frame-interp",
+  "vram_gb": 4,
+  "est_sec": 40,
+  "priority": 230,
+  "models": [
+   "rife49"
+  ],
+  "inputs": [
+   {
+    "key": "video",
+    "type": "video",
+    "required": true,
+    "label_en": "Video",
+    "label_el": "Video"
+   },
+   {
+    "key": "fps_out",
+    "type": "float",
+    "default": 48,
+    "min": 2,
+    "max": 240,
+    "step": 1,
+    "label_en": "Output fps (2 × the clip's fps)",
+    "label_el": "fps εξόδου (2 × των fps του clip)"
+   }
+  ],
+  "id": "interpolate-rife"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadVideoBase64",
+   "inputs": {
+    "video_b64": "{{video}}"
+   }
+  },
+  "2": {
+   "class_type": "GetVideoComponents",
+   "inputs": {
+    "video": [
+     "1",
+     0
+    ]
+   }
+  },
+  "3": {
+   "class_type": "RIFE VFI",
+   "inputs": {
+    "ckpt_name": "rife49.pth",
+    "frames": [
+     "2",
+     0
+    ],
+    "clear_cache_after_n_frames": 10,
+    "multiplier": 2,
+    "fast_mode": true,
+    "ensemble": true,
+    "scale_factor": 1.0,
+    "dtype": "float16",
+    "torch_compile": false,
+    "batch_size": 1
+   }
+  },
+  "4": {
+   "class_type": "CreateVideo",
+   "inputs": {
+    "images": [
+     "3",
+     0
+    ],
+    "fps": "{{fps_out}}",
+    "audio": [
+     "2",
+     1
+    ]
+   }
+  },
+  "5": {
+   "class_type": "SaveVideo",
+   "inputs": {
+    "video": [
+     "4",
+     0
+    ],
+    "filename_prefix": "video/interp",
+    "format": "mp4",
+    "codec": "auto"
+   }
+  }
+ }
+}

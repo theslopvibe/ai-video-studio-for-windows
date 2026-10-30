@@ -21,6 +21,9 @@ pub struct InputDef {
     pub label_el: String,
     #[serde(default)]
     pub label_en: String,
+    /// Fixed choices (shown as a drop-down), e.g. languages or voices.
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 fn prio() -> u32 {
@@ -71,6 +74,14 @@ pub struct Meta {
     pub good_en: String,
     #[serde(default)]
     pub good_el: String,
+    /// Languages the model can speak or sing, for sound modes (shown in the UI, offered to the chat / MCP).
+    #[serde(default)]
+    pub languages: Vec<String>,
+    /// Safety / licence note shown before use (voice cloning, faces).
+    #[serde(default)]
+    pub notice_en: String,
+    #[serde(default)]
+    pub notice_el: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -277,7 +288,7 @@ fn typed(def: &InputDef, v: Option<&Value>) -> Value {
             if let Some(m) = def.max { n = n.min(m); }
             if def.ty == "int" { json!(n.round() as i64) } else { json!(n) }
         }
-        "image" => match raw {
+        "image" | "audio" | "video" => match raw {
             Value::String(_) => raw,
             _ => json!(""),
         },
@@ -393,6 +404,25 @@ mod tests {
         assert_eq!(f["104"]["inputs"]["length"], 81);
         assert_eq!(f["96"]["inputs"]["noise_seed"], "__RANDOM_INT__");
         assert!(!f.to_string().contains("{{"));
+    }
+
+    #[test]
+    fn media_tools_are_wired_and_fill_cleanly() {
+        for f in ["chatterbox-tts.json", "chatterbox-clone.json", "chatterbox-vc.json", "kokoro-tts.json", "rmbg-birefnet.json", "upscale-realesrgan.json", "qwen-image-edit.json", "interpolate-rife.json", "lipsync-latentsync.json"] {
+            let w = wf(f);
+            let graph = w.workflow.to_string();
+            // every input is used by the graph (prompt may be only a label for pure tools), every placeholder has an input
+            for i in w.meta.inputs.iter().filter(|i| i.key != "prompt") {
+                assert!(graph.contains(&format!("{{{{{}}}}}", i.key)), "{f}: input {} is not used", i.key);
+            }
+            let mut p = Map::new();
+            for i in &w.meta.inputs {
+                p.insert(i.key.clone(), match i.ty.as_str() { "image" | "audio" | "video" => json!("QUJD"), _ => i.default.clone() });
+            }
+            p.insert("prompt".into(), json!("hello"));
+            let filled = fill(&w, &p).to_string();
+            assert!(!filled.contains("{{"), "{f}: unfilled placeholder: {filled}");
+        }
     }
 
     #[test]

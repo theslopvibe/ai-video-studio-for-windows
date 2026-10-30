@@ -14,7 +14,8 @@ Workflow:
 4. When done, file_path is the .mp4 on the user's disk. Pass it to editing tools/skills. Report failures with the error text; make_report gives a diagnostic file.
 Prompts: write English, cinematic, concrete (subject, action, camera, lighting, style). For several clips of one story keep the same style words and character description in each prompt. For image-to-video give image_path (a local file) and describe only the motion.
 The user may name a model ("LTX", "Wan") and/or a GPU ("4090", "RTX 4090 24GB") in plain words. Pass them as workflow_id / gpu exactly as the user said; the app resolves them. If it replies that the GPU does not exist (e.g. "4090 Ti 16GB" is not offered), show the user the listed alternatives and ask which one; never swap silently. To change the app's permanent defaults ("use LTX with a 4090 from now on") call set_defaults. A per-video gpu/workflow_id overrides the defaults for that video only.
-Models: ltxv-t2v / ltxv-i2v are fastest and cheapest; wan22-* are higher quality and slower. For pictures set kind="image" (FLUX or SDXL). Modes named fal-* and replicate-* run on hosted APIs (pay per result, no GPU, need the provider key); the others run on the user's PC (provider="local") or a rented Vast GPU (provider="vast"). The app's default place to run is shown by video_studio_status. Use list_workflows to see the options and their parameters.`;
+Models: ltxv-t2v / ltxv-i2v are fastest and cheapest; wan22-* are higher quality and slower. For pictures set kind="image" (FLUX or SDXL). Modes named fal-* and replicate-* run on hosted APIs (pay per result, no GPU, need the provider key); the others run on the user's PC (provider="local") or a rented Vast GPU (provider="vast"). The app's default place to run is shown by video_studio_status. Use list_workflows to see the options and their parameters.
+More than video: list_workflows also has voice (kind tts: text to speech; vc: change a voice), picture tools (kind i2i: remove background, upscale, edit with words), smoother motion (v2v) and lip-sync (lipsync). Each entry lists its "inputs" (image/audio/video slots) and, for voices, its "languages": answer language questions from that list, never from memory. Chain steps with generate_video: set workflow_id to the tool and give "inputs" like {"image":"job:<id of the finished job>"} or {"audio":"C:\\path\\voice.wav"}. Typical chains: picture -> video (i2v), text -> voice (tts) -> lip-sync (video with a face + that voice), video -> v2v. Every step costs or takes time like a video, so confirm the whole plan once. For voice cloning, voice change and lip-sync on a real person, first make sure the user confirms the voice/face is their own or they have permission; do not help impersonate someone or make people appear to say things they did not say.`;
 
 function apiInfo() {
   const base = process.env.AIVS_DATA_DIR || path.join(process.env.APPDATA || "", "com.aivideostudio.app");
@@ -77,7 +78,7 @@ const TOOLS = [
       properties: {
         prompt: { type: "string", description: "English, cinematic, concrete description." },
         user_confirmed: { type: "boolean", description: "True only after the user explicitly agreed to the cost." },
-        kind: { type: "string", enum: ["video", "image"], description: "image makes a still picture (default video)." },
+        kind: { type: "string", enum: ["video", "image", "audio", "tts", "vc", "i2i", "v2v", "lipsync"], description: "image = still picture, audio = music, tts = speech, vc = voice change, i2i = picture tool, v2v = video tool, lipsync (default video)." },
         provider: { type: "string", enum: ["local", "vast"], description: "Where to run: the user's PC or a rented cloud GPU. Omit for the app default." },
         image_path: { type: "string", description: "Local path of a start image (png/jpg) for image-to-video." },
         end_image_path: { type: "string", description: "Local path of an end image (needs a flf2v workflow)." },
@@ -91,6 +92,7 @@ const TOOLS = [
         gpu: { type: "string", description: "GPU in the user's words (\"4090\", \"RTX 3090 24GB\"); omit for the app's default." },
         project: { type: "string", description: "Project/folder name in the app (default \"Claude\")." },
         scene: { type: "integer", description: "Scene number; the file gets a sNN_ prefix (keeps story order)." },
+        inputs: { type: "object", description: "Media inputs by slot key (see the workflow's inputs): value \"job:<job id>\" = result of an earlier job, or a local file path (png/jpg/webp, mp3/wav/flac/ogg/m4a, mp4/webm/mov)." },
         extra_params: { type: "object", description: "Other workflow parameters by key (see list_workflows)." },
       },
     },
@@ -102,7 +104,7 @@ const TOOLS = [
       for (const k of ["width", "height", "length", "fps", "seed", "negative"]) if (a[k] !== undefined) params[k] = a[k];
       return call("POST", "/v1/jobs", {
         prompt: a.prompt, kind: a.kind, provider: a.provider, image_path: a.image_path, end_image_path: a.end_image_path, workflow_id: a.workflow_id,
-        gpu: a.gpu, project: a.project, scene: a.scene, params,
+        gpu: a.gpu, project: a.project, scene: a.scene, inputs: a.inputs, params,
       });
     },
   },

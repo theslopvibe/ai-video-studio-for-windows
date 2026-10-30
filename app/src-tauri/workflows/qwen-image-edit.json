@@ -1,0 +1,231 @@
+{
+ "meta": {
+  "name_en": "Picture → Change it with words (Qwen-Image-Edit)",
+  "name_el": "Εικόνα → Άλλαξέ την με λόγια (Qwen-Image-Edit)",
+  "desc_en": "Describe the change (“make the sky a sunset”, “remove the person on the left”, “wear a red jacket”) and the picture is edited. Heavy: about 23 GB download, needs 16 GB+ of RAM, 1.5-4 minutes per picture on an 8 GB card.",
+  "desc_el": "Περιγράφεις την αλλαγή («κάνε τον ουρανό ηλιοβασίλεμα», «βγάλε τον άνθρωπο αριστερά») και η εικόνα επεξεργάζεται. Βαρύ: περίπου 23 GB λήψη, θέλει 16 GB+ RAM, 1.5-4 λεπτά ανά εικόνα σε κάρτα 8 GB.",
+  "good_en": "Edit a photo without masks: change objects, clothes, background, style or text.",
+  "good_el": "Επεξεργασία φωτογραφίας χωρίς μάσκες: αλλαγή αντικειμένων, ρούχων, φόντου, στυλ ή κειμένου.",
+  "kind": "i2i",
+  "license": "Apache-2.0",
+  "pack": "qwen-image-edit",
+  "vram_gb": 8,
+  "est_sec": 180,
+  "priority": 220,
+  "models": [
+   "qwen_image_edit_2511"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   },
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_en": "What should change?",
+    "label_el": "Τι να αλλάξει;"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ],
+  "id": "qwen-image-edit"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "UnetLoaderGGUF",
+   "inputs": {
+    "unet_name": "qwen-image-edit-2511-Q4_K_M.gguf"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "type": "qwen_image",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "qwen_image_vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+    "strength_model": 1.0
+   }
+  },
+  "5": {
+   "class_type": "ModelSamplingAuraFlow",
+   "inputs": {
+    "model": [
+     "4",
+     0
+    ],
+    "shift": 3.1
+   }
+  },
+  "6": {
+   "class_type": "CFGNorm",
+   "inputs": {
+    "model": [
+     "5",
+     0
+    ],
+    "strength": 1.0
+   }
+  },
+  "7": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "8": {
+   "class_type": "FluxKontextImageScale",
+   "inputs": {
+    "image": [
+     "7",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "TextEncodeQwenImageEditPlus",
+   "inputs": {
+    "clip": [
+     "2",
+     0
+    ],
+    "prompt": "{{prompt}}",
+    "vae": [
+     "3",
+     0
+    ],
+    "image1": [
+     "8",
+     0
+    ]
+   }
+  },
+  "10": {
+   "class_type": "TextEncodeQwenImageEditPlus",
+   "inputs": {
+    "clip": [
+     "2",
+     0
+    ],
+    "prompt": "",
+    "vae": [
+     "3",
+     0
+    ],
+    "image1": [
+     "8",
+     0
+    ]
+   }
+  },
+  "11": {
+   "class_type": "FluxKontextMultiReferenceLatentMethod",
+   "inputs": {
+    "conditioning": [
+     "9",
+     0
+    ],
+    "reference_latents_method": "index_timestep_zero"
+   }
+  },
+  "12": {
+   "class_type": "FluxKontextMultiReferenceLatentMethod",
+   "inputs": {
+    "conditioning": [
+     "10",
+     0
+    ],
+    "reference_latents_method": "index_timestep_zero"
+   }
+  },
+  "13": {
+   "class_type": "VAEEncode",
+   "inputs": {
+    "pixels": [
+     "8",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "14": {
+   "class_type": "KSampler",
+   "inputs": {
+    "model": [
+     "6",
+     0
+    ],
+    "seed": "{{seed}}",
+    "steps": 4,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "positive": [
+     "11",
+     0
+    ],
+    "negative": [
+     "12",
+     0
+    ],
+    "latent_image": [
+     "13",
+     0
+    ],
+    "denoise": 1.0
+   }
+  },
+  "15": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "14",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "16": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "15",
+     0
+    ],
+    "filename_prefix": "qwen_edit"
+   }
+  }
+ }
+}

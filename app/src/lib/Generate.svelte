@@ -2,6 +2,8 @@
   import { api, type InputDef, type GpuOffer } from "./api";
   import { S } from "./store.svelte";
   import JobCard from "./JobCard.svelte";
+  import Chain from "./Chain.svelte";
+  let extra = $state<"" | "voice" | "tools">("");
 
   const isI2v = (w?: { meta: { inputs: InputDef[] } }) => !!w?.meta.inputs.some((i) => i.type === "image");
   let wfId = $state(S.settings.last_workflow || S.workflows[0]?.meta.id || "");
@@ -166,7 +168,11 @@
     { id: "image", kind: "t2i" as const, label: "tab_t2i" as const, icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4"/>' },
     { id: "audio", kind: "t2a" as const, label: "tab_t2a" as const, icon: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
   ];
-  const media = $derived(kind === "t2i" ? "image" : kind === "t2a" ? "audio" : "video");
+  const media = $derived(extra ? extra : kind === "t2i" ? "image" : kind === "t2a" ? "audio" : "video");
+  const EXTRA = [
+    { id: "voice" as const, el: "Φωνή", en: "Voice", icon: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>' },
+    { id: "tools" as const, el: "Εργαλεία", en: "Tools", icon: '<path d="M14 6l4 4M4 20l9-9 4 4-9 9H4z"/><path d="M15 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>' },
+  ];
   const tail = (s: string) => (s.includes("→") ? s.split("→").pop()!.trim() : s);
 </script>
 
@@ -177,12 +183,21 @@
   <div class="card">
     <div class="media" role="tablist">
       {#each MEDIA as m}
-        <button role="tab" aria-selected={media === m.id} class="mbtn" class:on={media === m.id} onclick={() => (kind = m.kind === "t2v" && kind === "i2v" ? "i2v" : m.kind)}>
+        <button role="tab" aria-selected={media === m.id} class="mbtn" class:on={media === m.id} onclick={() => { extra = ""; kind = m.kind === "t2v" && kind === "i2v" ? "i2v" : m.kind; }}>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html m.icon}</svg>
           <span>{tail(S.t(m.label))}</span>
         </button>
       {/each}
+      {#each EXTRA as x}
+        <button role="tab" aria-selected={extra === x.id} class="mbtn" class:on={extra === x.id} onclick={() => (extra = x.id)}>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html x.icon}</svg>
+          <span>{S.lang === "el" ? x.el : x.en}</span>
+        </button>
+      {/each}
     </div>
+    {#if extra}
+      {#key extra}<Chain kinds={extra === "voice" ? ["tts", "vc"] : ["i2i", "v2v", "lipsync"]} onclose={() => {}} />{/key}
+    {:else}
     {#if media === "video"}
       <div class="from row small">
         <button class="seg" class:on={kind === "t2v"} onclick={() => (kind = "t2v")}>{S.t("tab_t2v")}</button>
@@ -306,9 +321,15 @@
       {#each fields.filter((f) => !f.advanced) as f}
         <div class="field">
           <label for={"f_" + f.key}>{label(f)}</label>
-          <input id={"f_" + f.key} type={f.type === "int" || f.type === "float" ? "number" : "text"}
-            min={f.min} max={f.max} step={f.step} value={val(f) as string}
-            oninput={(e) => setVal(f, e.currentTarget.value)} />
+          {#if f.options?.length}
+            <select id={"f_" + f.key} value={val(f) as string} onchange={(e) => setVal(f, e.currentTarget.value)}>
+              {#each f.options as o}<option value={o}>{o}</option>{/each}
+            </select>
+          {:else}
+            <input id={"f_" + f.key} type={f.type === "int" || f.type === "float" ? "number" : "text"}
+              min={f.min} max={f.max} step={f.step} value={val(f) as string}
+              oninput={(e) => setVal(f, e.currentTarget.value)} />
+          {/if}
         </div>
       {/each}
     </div>
@@ -335,6 +356,7 @@
       </div>
       <button class="primary big" onclick={submit} disabled={!wf}>{batch || scenes.length ? S.t("add_queue_n") : S.t("add_queue")}</button>
     </div>
+    {/if}
   </div>
 
   <h2>{S.t("now_running")}</h2>

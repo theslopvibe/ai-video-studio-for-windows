@@ -1,0 +1,132 @@
+{
+ "meta": {
+  "name_en": "Text → Voice: Kokoro (fast, 9 languages)",
+  "name_el": "Κείμενο → Φωνή: Kokoro (γρήγορο, 9 γλώσσες)",
+  "desc_en": "Very light and fast voice (runs on the processor, no graphics card needed). English (US/UK), French, Japanese, Hindi, Chinese, Spanish, Portuguese, Italian. No Greek.",
+  "desc_el": "Πολύ ελαφριά και γρήγορη φωνή (τρέχει στον επεξεργαστή, χωρίς κάρτα γραφικών). Αγγλικά, γαλλικά, ιαπωνικά, χίντι, κινέζικα, ισπανικά, πορτογαλικά, ιταλικά. Όχι ελληνικά.",
+  "good_en": "Quick narration drafts and offline voice-over on any PC.",
+  "good_el": "Γρήγορες αφηγήσεις και voice-over σε οποιοδήποτε PC.",
+  "kind": "tts",
+  "license": "Apache-2.0",
+  "pack": "kokoro",
+  "vram_gb": 0,
+  "est_sec": 10,
+  "priority": 90,
+  "models": [
+   "kokoro"
+  ],
+  "languages": [
+   "English",
+   "French",
+   "Japanese",
+   "Hindi",
+   "Chinese",
+   "Spanish",
+   "Portuguese",
+   "Italian"
+  ],
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_en": "Text to speak",
+    "label_el": "Κείμενο προς ομιλία"
+   },
+   {
+    "key": "voice",
+    "type": "text",
+    "default": "af_heart",
+    "options": [
+     "af_heart",
+     "af_bella",
+     "af_nicole",
+     "af_sarah",
+     "af_sky",
+     "am_adam",
+     "am_michael",
+     "bf_emma",
+     "bf_isabella",
+     "bm_george",
+     "bm_lewis",
+     "ff_siwis",
+     "hf_alpha",
+     "hm_omega",
+     "if_sara",
+     "im_nicola",
+     "jf_alpha",
+     "jm_kumo",
+     "pf_dora",
+     "pm_alex",
+     "ef_dora",
+     "em_alex",
+     "zf_xiaobei",
+     "zf_xiaoxiao",
+     "zm_yunxi"
+    ],
+    "label_en": "Voice",
+    "label_el": "Φωνή"
+   },
+   {
+    "key": "language",
+    "type": "text",
+    "default": "English",
+    "options": [
+     "English",
+     "English (British)",
+     "French",
+     "Japanese",
+     "Hindi",
+     "Mandarin Chinese",
+     "Spanish",
+     "Brazilian Portuguese",
+     "Italian"
+    ],
+    "label_en": "Language (match the voice)",
+    "label_el": "Γλώσσα (ίδια με τη φωνή)"
+   },
+   {
+    "key": "speed",
+    "type": "float",
+    "default": 1.0,
+    "min": 0.5,
+    "max": 2.0,
+    "step": 0.05,
+    "label_en": "Speed",
+    "label_el": "Ταχύτητα"
+   }
+  ],
+  "id": "kokoro-tts"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "KokoroSpeaker",
+   "inputs": {
+    "speaker_name": "{{voice}}"
+   }
+  },
+  "2": {
+   "class_type": "KokoroGenerator",
+   "inputs": {
+    "text": "{{prompt}}",
+    "speaker": [
+     "1",
+     0
+    ],
+    "speed": "{{speed}}",
+    "lang": "{{language}}"
+   }
+  },
+  "3": {
+   "class_type": "SaveAudioMP3",
+   "inputs": {
+    "audio": [
+     "2",
+     0
+    ],
+    "filename_prefix": "audio/kokoro",
+    "quality": "V0"
+   }
+  }
+ }
+}

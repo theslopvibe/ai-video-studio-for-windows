@@ -92,7 +92,9 @@ async fn run_job(app: &AppHandle, job: &Job, cancel: &Arc<AtomicBool>) -> Result
         .find(|w| w.meta.id == job.workflow_id)
         .ok_or_else(|| format!("Unknown workflow: {}", job.workflow_id))?;
     let mut params: Map<String, Value> = serde_json::from_str(&job.params).unwrap_or_default();
-    for def in wf.meta.inputs.iter().filter(|i| i.ty == "image") {
+    // a step chained behind an earlier job ("job:<id>") picks up that job's finished file now
+    crate::resolve_media_refs(&st, &job.id, &mut params, true)?;
+    for def in wf.meta.inputs.iter().filter(|i| matches!(i.ty.as_str(), "image" | "audio" | "video")) {
         if let Some(path) = params.get(&def.key).and_then(|v| v.as_str()).and_then(|s| s.strip_prefix("file:")).map(String::from) {
             use base64::Engine;
             if !crate::is_input_file(&st, &path) {
@@ -102,7 +104,7 @@ async fn run_job(app: &AppHandle, job: &Job, cancel: &Arc<AtomicBool>) -> Result
             params.insert(def.key.clone(), json!(base64::engine::general_purpose::STANDARD.encode(bytes)));
         }
         if def.required && params.get(&def.key).and_then(|v| v.as_str()).unwrap_or("").is_empty() {
-            return Err(format!("This mode needs an image: \"{}\". Pick it on the Generate page.", if def.label_en.is_empty() { &def.key } else { &def.label_en }));
+            return Err(format!("This mode needs a {}: \"{}\". Pick it on the Create page.", def.ty, if def.label_en.is_empty() { &def.key } else { &def.label_en }));
         }
     }
     let workflow = workflows::fill(wf, &params);

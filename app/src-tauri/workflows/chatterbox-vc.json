@@ -1,0 +1,87 @@
+{
+ "meta": {
+  "name_en": "Voice → Another voice (Chatterbox)",
+  "name_el": "Φωνή → Άλλη φωνή (Chatterbox)",
+  "desc_en": "Takes a recording of speech and says the same thing in a voice similar to a second sample. Only use voices you have permission to use.",
+  "desc_el": "Παίρνει μια ηχογράφηση και λέει τα ίδια με φωνή παρόμοια με ένα δεύτερο δείγμα. Μόνο φωνές που έχεις άδεια να χρησιμοποιείς.",
+  "good_en": "Change the voice of a recording while keeping the words and timing.",
+  "good_el": "Αλλάζει τη φωνή μιας ηχογράφησης κρατώντας τα λόγια και τον ρυθμό.",
+  "notice_en": "Cloning someone's voice is only OK with their permission. Use your own voice or a voice you have the right to use. Do not use it to deceive people.",
+  "notice_el": "Η κλωνοποίηση φωνής επιτρέπεται μόνο με τη συναίνεση του ανθρώπου. Χρησιμοποίησε τη δική σου φωνή ή φωνή που έχεις δικαίωμα να χρησιμοποιείς. Όχι για εξαπάτηση.",
+  "kind": "vc",
+  "license": "MIT",
+  "pack": "chatterbox-vc",
+  "vram_gb": 6,
+  "est_sec": 30,
+  "priority": 120,
+  "models": [
+   "chatterbox_vc"
+  ],
+  "inputs": [
+   {
+    "key": "audio",
+    "type": "audio",
+    "required": true,
+    "label_en": "Recording to convert",
+    "label_el": "Ηχογράφηση προς μετατροπή"
+   },
+   {
+    "key": "audio_target",
+    "type": "audio",
+    "required": true,
+    "label_en": "Voice to sound like (5-15 s)",
+    "label_el": "Φωνή-στόχος (5-15 δευτ.)"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ],
+  "id": "chatterbox-vc"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadAudioBase64",
+   "inputs": {
+    "audio_b64": "{{audio}}"
+   }
+  },
+  "2": {
+   "class_type": "AIVSLoadAudioBase64",
+   "inputs": {
+    "audio_b64": "{{audio_target}}"
+   }
+  },
+  "3": {
+   "class_type": "FL_ChatterboxVC",
+   "inputs": {
+    "input_audio": [
+     "1",
+     0
+    ],
+    "target_voice": [
+     "2",
+     0
+    ],
+    "seed": "{{seed}}",
+    "use_cpu": false,
+    "keep_model_loaded": false
+   }
+  },
+  "4": {
+   "class_type": "SaveAudioMP3",
+   "inputs": {
+    "audio": [
+     "3",
+     0
+    ],
+    "filename_prefix": "audio/vc",
+    "quality": "V0"
+   }
+  }
+ }
+}

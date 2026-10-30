@@ -1,0 +1,66 @@
+{
+ "meta": {
+  "name_en": "Picture → Sharper and 4x larger (Real-ESRGAN)",
+  "name_el": "Εικόνα → Πιο καθαρή και 4 φορές μεγαλύτερη (Real-ESRGAN)",
+  "desc_en": "Enlarges a picture four times and adds detail. Runs on your PC, small model (64 MB). Large pictures are processed in tiles.",
+  "desc_el": "Μεγαλώνει μια εικόνα 4 φορές και προσθέτει λεπτομέρεια. Τρέχει στον υπολογιστή σου, μικρό μοντέλο (64 MB). Οι μεγάλες εικόνες γίνονται σε κομμάτια.",
+  "good_en": "Print-size images, sharpening AI pictures, old photos.",
+  "good_el": "Εικόνες για εκτύπωση, ξεθολώματα AI εικόνων, παλιές φωτογραφίες.",
+  "kind": "i2i",
+  "license": "BSD-3-Clause",
+  "pack": "realesrgan",
+  "vram_gb": 3,
+  "est_sec": 20,
+  "priority": 210,
+  "models": [
+   "RealESRGAN_x4plus"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   }
+  ],
+  "id": "upscale-realesrgan"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "UpscaleModelLoader",
+   "inputs": {
+    "model_name": "RealESRGAN_x4plus.pth"
+   }
+  },
+  "3": {
+   "class_type": "ImageUpscaleWithModel",
+   "inputs": {
+    "upscale_model": [
+     "2",
+     0
+    ],
+    "image": [
+     "1",
+     0
+    ]
+   }
+  },
+  "4": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "3",
+     0
+    ],
+    "filename_prefix": "up"
+   }
+  }
+ }
+}
