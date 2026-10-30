@@ -25,12 +25,12 @@
   });
 
   // Image editor → app: the AI menu inside the editor asks for a picture, we run a job and answer with the file.
-  async function handleAi(msg: { avs?: string; id: string; op: string; prompt?: string; width?: number; height?: number; image?: string }) {
+  async function handleAi(msg: { avs?: string; id: string; op: string; prompt?: string; width?: number; height?: number; image?: string; points?: string }) {
     if (msg?.avs !== "ai") return;
     const reply = (r: { image?: string; error?: string }) => paintUrl && paintFrame?.contentWindow?.postMessage({ avs: "ai-result", id: msg.id, ...r }, new URL(paintUrl).origin);
     try {
       // each menu entry is just a workflow: new tools only need a workflow file
-      const TOOL: Record<string, string> = { upscale: "upscale-realesrgan", remove_background: "rmbg-birefnet", edit: "qwen-image-edit" };
+      const TOOL: Record<string, string> = { upscale: "upscale-realesrgan", remove_background: "rmbg-birefnet", edit: "qwen-image-edit", cutout: "cutout-sam2", erase: "erase-object", faces: "face-restore-gfpgan", colorize: "colorize-ddcolor", depth: "depth-da3" };
       const wf = msg.op === "generate"
         ? S.workflows.filter((w) => w.meta.kind === "t2i").sort((a, b) => (b.meta.priority ?? 0) - (a.meta.priority ?? 0))[0]
         : S.workflows.find((w) => w.meta.id === TOOL[msg.op]);
@@ -40,6 +40,7 @@
       const params: Record<string, unknown> = {};
       if (keys.has("width")) params.width = snap(msg.width ?? 1024);
       if (keys.has("height")) params.height = snap(msg.height ?? 1024);
+      if (keys.has("points") && msg.points) params.points = String(msg.points).replace(/[^0-9,;. -]/g, "");
       if (keys.has("image") && msg.image) params.image = msg.image.replace(/^data:[^,]*,/, "");
       const job = await api.enqueue(S.projectId, wf.meta.id, String(msg.prompt || wf.meta.name_en), params);
       for (;;) {

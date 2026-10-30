@@ -1,0 +1,142 @@
+{
+ "meta": {
+  "name_en": "Recording → Subtitles (Whisper, 99 languages)",
+  "name_el": "Ηχογράφηση → Υπότιτλοι (Whisper, 99 γλώσσες)",
+  "desc_en": "The same as above, for a voice recording or a song (mp3, wav...). Output is a subtitle file you can also read as a transcript.",
+  "desc_el": "Το ίδιο για ηχογράφηση ή τραγούδι (mp3, wav...). Το αποτέλεσμα είναι αρχείο υποτίτλων που διαβάζεται και ως κείμενο.",
+  "inputs": [
+   {
+    "key": "audio",
+    "type": "audio",
+    "required": true,
+    "label_en": "Recording",
+    "label_el": "Ηχογράφηση"
+   },
+   {
+    "key": "language",
+    "type": "text",
+    "default": "auto",
+    "options": [
+     "auto",
+     "en",
+     "el",
+     "es",
+     "fr",
+     "de",
+     "it",
+     "pt",
+     "ru",
+     "zh",
+     "ja",
+     "ko",
+     "ar",
+     "hi",
+     "tr",
+     "nl",
+     "pl",
+     "uk",
+     "he",
+     "sv",
+     "bn",
+     "ur"
+    ],
+    "label_en": "Spoken language (auto = detect)",
+    "label_el": "Γλώσσα ομιλίας (auto = αυτόματα)"
+   },
+   {
+    "key": "task",
+    "type": "text",
+    "default": "transcribe",
+    "options": [
+     "transcribe",
+     "translate"
+    ],
+    "label_en": "transcribe = same language, translate = into English",
+    "label_el": "transcribe = ίδια γλώσσα, translate = στα αγγλικά"
+   },
+   {
+    "key": "format",
+    "type": "text",
+    "default": "srt",
+    "options": [
+     "srt",
+     "vtt"
+    ],
+    "label_en": "File type",
+    "label_el": "Τύπος αρχείου"
+   },
+   {
+    "key": "model",
+    "type": "text",
+    "default": "turbo",
+    "options": [
+     "turbo",
+     "large-v3",
+     "medium",
+     "small"
+    ],
+    "advanced": true,
+    "label_en": "Model (turbo = best balance; small = fastest, weaker for Greek)",
+    "label_el": "Μοντέλο (turbo = καλύτερη ισορροπία· small = πιο γρήγορο, πιο αδύναμο στα ελληνικά)"
+   }
+  ],
+  "kind": "subs",
+  "license": "MIT",
+  "pack": "whisper-subs",
+  "vram_gb": 3,
+  "est_sec": 60,
+  "priority": 250,
+  "models": [
+   "faster-whisper"
+  ],
+  "languages": [
+   "Greek",
+   "English",
+   "Spanish",
+   "French",
+   "German",
+   "Italian",
+   "Portuguese",
+   "Russian",
+   "Chinese",
+   "Japanese",
+   "Korean",
+   "Arabic",
+   "Hindi",
+   "Turkish",
+   "Dutch",
+   "Polish",
+   "Ukrainian",
+   "Hebrew",
+   "Swedish",
+   "Bengali",
+   "Urdu",
+   "and ~80 more"
+  ],
+  "good_en": "Subtitles for videos, voice-overs and recordings, in the spoken language or translated to English.",
+  "good_el": "Υπότιτλοι για video, voice-over και ηχογραφήσεις, στη γλώσσα που ακούγεται ή μεταφρασμένοι στα αγγλικά.",
+  "id": "whisper-subtitles-audio"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadAudioBase64",
+   "inputs": {
+    "audio_b64": "{{audio}}"
+   }
+  },
+  "3": {
+   "class_type": "AIVSTranscribeSubtitles",
+   "inputs": {
+    "audio": [
+     "1",
+     0
+    ],
+    "model": "{{model}}",
+    "language": "{{language}}",
+    "task": "{{task}}",
+    "format": "{{format}}",
+    "prefix": "subtitles"
+   }
+  }
+ }
+}

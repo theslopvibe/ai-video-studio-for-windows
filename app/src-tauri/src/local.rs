@@ -382,6 +382,21 @@ pub async fn install_models(app: &AppHandle, st: &AppState, packs: &[Value], can
                 install_node(&root, repo, name, n["rev"].as_str().unwrap_or(""), cancel, app).await?;
             }
         }
+        // plain pip packages a pack needs (pinned name==version only, so nothing else can be smuggled into the command line)
+        // "pip_nodeps": packages installed without their own dependencies (when those would pull heavy or conflicting extras)
+        let pip_list: Vec<(Value, bool)> = pack["pip"].as_array().cloned().unwrap_or_default().into_iter().map(|p| (p, false))
+            .chain(pack["pip_nodeps"].as_array().cloned().unwrap_or_default().into_iter().map(|p| (p, true))).collect();
+        for (pkg, nodeps) in pip_list {
+            let pkg = pkg.as_str().unwrap_or("");
+            if !crate::safe_pip_spec(pkg) {
+                return Err(format!("Refusing pip package: {pkg}"));
+            }
+            progress(app, "nodes", 0.0, &format!("python package {pkg}"));
+            let out = tokio::process::Command::new(python(&root)).args(["-s", "-m", "pip", "install", "-q"]).args(if nodeps { vec!["--no-deps"] } else { vec![] }).arg(pkg).creation_flags_hidden().output().await.map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(format!("pip install {pkg} failed: {}", String::from_utf8_lossy(&out.stderr).chars().take(300).collect::<String>()));
+            }
+        }
         for f in pack["files"].as_array().cloned().unwrap_or_default() {
             let (url, dir) = (f["url"].as_str().unwrap_or(""), f["dir"].as_str().unwrap_or(""));
             if url.is_empty() || dir.contains("..") || dir.starts_with('/') || dir.starts_with('\\') {
@@ -508,7 +523,7 @@ pub fn find_output(entry: &Value) -> Option<(String, String, String)> {
     let outs = entry["outputs"].as_object()?;
     let mut best: Option<(String, String, String)> = None;
     for node in outs.values() {
-        for key in ["images", "gifs", "videos", "audio"] {
+        for key in ["images", "gifs", "videos", "audio", "text", "files", "meshes", "3d", "glb", "subtitles"] {
             for f in node[key].as_array().cloned().unwrap_or_default() {
                 let name = f["filename"].as_str().unwrap_or("");
                 if f["type"].as_str().unwrap_or("output") != "output" {
@@ -516,7 +531,7 @@ pub fn find_output(entry: &Value) -> Option<(String, String, String)> {
                 }
                 let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
                 let t = (name.to_string(), f["subfolder"].as_str().unwrap_or("").to_string(), "output".to_string());
-                if matches!(ext.as_str(), "mp4" | "webm" | "mov" | "mp3" | "flac" | "wav" | "ogg" | "opus") {
+                if matches!(ext.as_str(), "mp4" | "webm" | "mov" | "mp3" | "flac" | "wav" | "ogg" | "opus" | "srt" | "vtt" | "glb" | "obj" | "ply") {
                     return Some(t);
                 }
                 if best.is_none() && matches!(ext.as_str(), "gif" | "webp" | "png" | "jpg" | "jpeg") {

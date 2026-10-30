@@ -157,6 +157,15 @@ fn is_local_drive_path(p: &Path) -> bool {
 }
 
 /// Copies a picture, sound or clip into the inputs folder and returns the `file:` reference jobs use.
+/// `name==1.2.3` only: letters, digits, `-`, `_`, `.`, no spaces, no options, no URLs.
+pub fn safe_pip_spec(s: &str) -> bool {
+    let Some((name, ver)) = s.split_once("==") else { return false };
+    !name.is_empty() && name.len() <= 60 && !ver.is_empty() && ver.len() <= 24
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && ver.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+        && !name.starts_with('-')
+}
+
 pub fn stash_input(st: &AppState, src: &Path, tag: &str) -> Result<String, String> {
     // decided on the text alone, before any filesystem call
     if !is_local_drive_path(src) {
@@ -845,6 +854,23 @@ fn editor_url() -> Option<String> {
     editor::url()
 }
 
+/// Reads a finished subtitle file (.srt/.vtt) from the app's own folders.
+#[tauri::command]
+fn text_output(st: State<AppState>, path: String) -> R<String> {
+    let real = std::fs::canonicalize(&path).map_err(e)?;
+    let ok = [st.videos_dir.clone(), st.data_dir.clone(), st.output_dir()].iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| real.starts_with(d))
+        || st.db.projects().map_err(e)?.iter().filter_map(|p| std::fs::canonicalize(st.project_dir(p)).ok()).any(|d| real.starts_with(d));
+    let ext = real.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !ok || !matches!(ext.as_str(), "srt" | "vtt") {
+        return Err("Not a subtitle file in the app folders".into());
+    }
+    let bytes = std::fs::read(&real).map_err(e)?;
+    if bytes.len() > 2 << 20 {
+        return Err("Subtitle file is too large".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 #[tauri::command]
 fn paint_url() -> Option<String> {
     editor::paint_url()
@@ -999,7 +1025,7 @@ pub fn run() {
             gpu_offers, apply_gpus, install_on_workers, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
-            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import
+            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -1036,6 +1062,19 @@ mod stash_tests {
         }
         for bad in [r"\\server\share\a.png", r"\\?\UNC\server\share\a.png", r"\\.\pipe\x.png", "//server/share/a.png", "relative.png", "C:rel.png", "/etc/x.png"] {
             assert!(!is_local_drive_path(Path::new(bad)), "{bad}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod pip_tests {
+    use super::safe_pip_spec;
+
+    #[test]
+    fn only_pinned_names_pass() {
+        assert!(safe_pip_spec("faster-whisper==1.2.1"));
+        for bad in ["faster-whisper", "x==1;rm", "--index-url=http://a", "a b==1", "git+https://x==1", "-e==1", "x==", "==1", "x==1 --pre"] {
+            assert!(!safe_pip_spec(bad), "{bad}");
         }
     }
 }

@@ -68,6 +68,55 @@ class AI_class {
 		});
 	}
 
+	// waits for one click on the picture and returns it as "x,y" in image pixels
+	pick_point(message) {
+		return new Promise((resolve) => {
+			const canvas = document.getElementById('canvas_minipaint');
+			alertify.message(message, 0);
+			const done = (value) => {
+				canvas.removeEventListener('mousedown', onDown, true);
+				window.removeEventListener('keydown', onKey, true);
+				alertify.dismissAll();
+				resolve(value);
+			};
+			const onDown = (ev) => {
+				ev.preventDefault();
+				ev.stopPropagation();
+				const r = canvas.getBoundingClientRect();
+				const x = Math.round(((ev.clientX - r.left) / r.width) * config.WIDTH);
+				const y = Math.round(((ev.clientY - r.top) / r.height) * config.HEIGHT);
+				done(x >= 0 && y >= 0 && x < config.WIDTH && y < config.HEIGHT ? x + ',' + y : null);
+			};
+			const onKey = (ev) => { if (ev.key === 'Escape') done(null); };
+			canvas.addEventListener('mousedown', onDown, true);
+			window.addEventListener('keydown', onKey, true);
+		});
+	}
+
+	async with_point(op, message, name) {
+		const l = this.layer_png();
+		if (!l) return alertify.error('Select a layer with an image first.');
+		const points = await this.pick_point(message);
+		if (!points) return alertify.warning('Cancelled.');
+		this.run(op, { image: l.png, points }, name);
+	}
+
+	cutout() { this.with_point('cutout', 'Click on the object you want to cut out (Esc to cancel)', 'Cut-out'); }
+
+	erase() { this.with_point('erase', 'Click on the object you want to erase (Esc to cancel)', 'Erased'); }
+
+	faces() { this.one_shot('faces', 'Faces restored'); }
+
+	colorize() { this.one_shot('colorize', 'Colorized'); }
+
+	depth() { this.one_shot('depth', 'Depth map'); }
+
+	one_shot(op, name) {
+		const l = this.layer_png();
+		if (!l) return alertify.error('Select a layer with an image first.');
+		this.run(op, { image: l.png }, name);
+	}
+
 	upscale() {
 		const l = this.layer_png();
 		if (!l) return alertify.error('Select a layer with an image first.');

@@ -196,7 +196,7 @@
       {/each}
     </div>
     {#if extra}
-      {#key extra}<Chain kinds={extra === "voice" ? ["tts", "vc"] : ["i2i", "v2v", "lipsync"]} onclose={() => {}} />{/key}
+      {#key extra}<Chain kinds={extra === "voice" ? ["tts", "vc"] : ["i2i", "v2v", "lipsync", "subs", "i2m"]} onclose={() => {}} />{/key}
     {:else}
     {#if media === "video"}
       <div class="from row small">

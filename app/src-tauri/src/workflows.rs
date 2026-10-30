@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn media_tools_are_wired_and_fill_cleanly() {
-        for f in ["chatterbox-tts.json", "chatterbox-clone.json", "chatterbox-vc.json", "kokoro-tts.json", "rmbg-birefnet.json", "upscale-realesrgan.json", "qwen-image-edit.json", "interpolate-rife.json", "lipsync-latentsync.json"] {
+        for f in ["chatterbox-tts.json", "chatterbox-clone.json", "chatterbox-vc.json", "kokoro-tts.json", "rmbg-birefnet.json", "upscale-realesrgan.json", "qwen-image-edit.json", "interpolate-rife.json", "lipsync-latentsync.json", "whisper-subtitles.json", "whisper-subtitles-audio.json", "cutout-sam2.json", "erase-object.json", "face-restore-gfpgan.json", "colorize-ddcolor.json", "depth-da3.json", "trellis2-image-to-3d.json"] {
             let w = wf(f);
             let graph = w.workflow.to_string();
             // every input is used by the graph (prompt may be only a label for pure tools), every placeholder has an input

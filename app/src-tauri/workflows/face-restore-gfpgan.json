@@ -1,0 +1,70 @@
+{
+ "meta": {
+  "name_en": "Picture → Restore faces (GFPGAN)",
+  "name_el": "Εικόνα → Βελτίωση προσώπων (GFPGAN)",
+  "desc_en": "Sharpens and repairs faces in old, blurry or low-quality photos. Pictures without a face come back unchanged. Experimental. Note: the code is Apache-2.0 but the GFPGAN weights were trained on public face datasets, so check the terms before commercial use.",
+  "desc_el": "Καθαρίζει και φτιάχνει πρόσωπα σε παλιές, θολές ή κακής ποιότητας φωτογραφίες. Εικόνες χωρίς πρόσωπο μένουν ίδιες. Πειραματικό. Προσοχή: ο κώδικας είναι Apache-2.0 αλλά τα βάρη GFPGAN εκπαιδεύτηκαν σε δημόσια σύνολα προσώπων, οπότε έλεγξε τους όρους πριν από εμπορική χρήση.",
+  "good_en": "Restore old family photos and blurry portraits.",
+  "good_el": "Αποκατάσταση παλιών οικογενειακών φωτογραφιών και θολών πορτρέτων.",
+  "notice_en": "Use it on photos you have the right to edit.",
+  "notice_el": "Χρησιμοποίησέ το σε φωτογραφίες που έχεις δικαίωμα να επεξεργαστείς.",
+  "kind": "i2i",
+  "license": "Apache-2.0 code (weights: see note)",
+  "pack": "face-restore",
+  "vram_gb": 4,
+  "est_sec": 20,
+  "priority": 280,
+  "models": [
+   "GFPGANv1.4"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   },
+   {
+    "key": "blend",
+    "type": "float",
+    "default": 1.0,
+    "min": 0.0,
+    "max": 1.0,
+    "step": 0.05,
+    "label_en": "Strength (1 = full restore)",
+    "label_el": "Ένταση (1 = πλήρης αποκατάσταση)"
+   }
+  ],
+  "id": "face-restore-gfpgan"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "AIVSFaceRestore",
+   "inputs": {
+    "image": [
+     "1",
+     0
+    ],
+    "model_name": "GFPGANv1.4.pth",
+    "blend": "{{blend}}"
+   }
+  },
+  "3": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "2",
+     0
+    ],
+    "filename_prefix": "faces"
+   }
+  }
+ }
+}

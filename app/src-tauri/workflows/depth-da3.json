@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "name_en": "Picture → Depth map (Depth Anything 3)",
+  "name_el": "Εικόνα → Χάρτης βάθους (Depth Anything 3)",
+  "desc_en": "Makes a grey picture showing how far each part of the photo is (white = near). Useful for 3D effects, blur and as a guide for other tools. Needs a recent ComfyUI (the app installs one).",
+  "desc_el": "Φτιάχνει γκρι εικόνα που δείχνει πόσο μακριά είναι κάθε σημείο (λευκό = κοντά). Χρήσιμο για εφέ 3D, θόλωμα και ως οδηγός για άλλα εργαλεία. Θέλει πρόσφατο ComfyUI (το εγκαθιστά η εφαρμογή).",
+  "good_en": "Depth effects, background blur, guides for image models.",
+  "good_el": "Εφέ βάθους, θόλωμα φόντου, οδηγοί για μοντέλα εικόνας.",
+  "kind": "i2i",
+  "license": "Apache-2.0",
+  "pack": "depth-da3",
+  "vram_gb": 2,
+  "est_sec": 10,
+  "priority": 300,
+  "models": [
+   "depth_anything_3_small"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   }
+  ],
+  "id": "depth-da3"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "LoadDA3Model",
+   "inputs": {
+    "model_name": "depth_anything_3_small.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "3": {
+   "class_type": "DA3Inference",
+   "inputs": {
+    "da3_model": [
+     "2",
+     0
+    ],
+    "image": [
+     "1",
+     0
+    ],
+    "resolution": 504,
+    "resize_method": "upper_bound_resize",
+    "mode": "mono"
+   }
+  },
+  "4": {
+   "class_type": "DA3Render",
+   "inputs": {
+    "da3_geometry": [
+     "3",
+     0
+    ],
+    "output": "depth",
+    "output.normalization": "v2_style",
+    "output.apply_sky_clip": false
+   }
+  },
+  "5": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "4",
+     0
+    ],
+    "filename_prefix": "depth"
+   }
+  }
+ }
+}

@@ -1,0 +1,331 @@
+{
+ "meta": {
+  "name_en": "Picture → 3D model (TRELLIS.2, .glb)",
+  "name_el": "Εικόνα → Μοντέλο 3D (TRELLIS.2, .glb)",
+  "desc_en": "Turns a picture of one object into a 3D model file (.glb, grey shape without textures). Heavy: about 8 GB download, slow on an 8 GB card, and it needs a recent ComfyUI. Experimental: not yet checked on small cards.",
+  "desc_el": "Μετατρέπει εικόνα ενός αντικειμένου σε αρχείο 3D (.glb, γκρι σχήμα χωρίς υφές). Βαρύ: περίπου 8 GB λήψη, αργό σε κάρτα 8 GB, θέλει πρόσφατο ComfyUI. Πειραματικό: δεν έχει ελεγχθεί σε μικρές κάρτες.",
+  "good_en": "Quick 3D shapes for games, printing ideas and mock-ups.",
+  "good_el": "Γρήγορα σχήματα 3D για παιχνίδια, ιδέες εκτύπωσης και μακέτες.",
+  "kind": "i2m",
+  "license": "MIT",
+  "pack": "trellis2",
+  "vram_gb": 12,
+  "est_sec": 300,
+  "priority": 310,
+  "models": [
+   "trellis_2_int8_convrot"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "advanced": true,
+    "label_en": "Seed",
+    "label_el": "Seed"
+   }
+  ],
+  "id": "trellis2-image-to-3d"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "LoadBackgroundRemovalModel",
+   "inputs": {
+    "bg_removal_name": "birefnet.safetensors"
+   }
+  },
+  "3": {
+   "class_type": "RemoveBackground",
+   "inputs": {
+    "bg_removal_model": [
+     "2",
+     0
+    ],
+    "image": [
+     "1",
+     0
+    ]
+   }
+  },
+  "4": {
+   "class_type": "ImageCropToMask",
+   "inputs": {
+    "images": [
+     "1",
+     0
+    ],
+    "masks": [
+     "3",
+     0
+    ],
+    "width": 1024,
+    "height": 1024,
+    "pad_factor": 1.0,
+    "grow_mask": 0,
+    "background": "#000000"
+   }
+  },
+  "5": {
+   "class_type": "CLIPVisionLoader",
+   "inputs": {
+    "clip_name": "dino_v3_vit_l.safetensors"
+   }
+  },
+  "6": {
+   "class_type": "Trellis2Conditioning",
+   "inputs": {
+    "clip_vision_model": [
+     "5",
+     0
+    ],
+    "image": [
+     "4",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "trellis_2_int8_convrot.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "8": {
+   "class_type": "CFGOverride",
+   "inputs": {
+    "model": [
+     "7",
+     0
+    ],
+    "cfg": 1,
+    "start_percent": 0.667,
+    "end_percent": 1
+   }
+  },
+  "9": {
+   "class_type": "RescaleCFG",
+   "inputs": {
+    "model": [
+     "8",
+     0
+    ],
+    "multiplier": 0.7
+   }
+  },
+  "10": {
+   "class_type": "ModelSamplingSD3",
+   "inputs": {
+    "model": [
+     "9",
+     0
+    ],
+    "shift": 5
+   }
+  },
+  "11": {
+   "class_type": "EmptyTrellis2LatentStructure",
+   "inputs": {
+    "batch_size": 1
+   }
+  },
+  "12": {
+   "class_type": "KSampler",
+   "inputs": {
+    "model": [
+     "10",
+     0
+    ],
+    "positive": [
+     "6",
+     0
+    ],
+    "negative": [
+     "6",
+     1
+    ],
+    "latent_image": [
+     "11",
+     0
+    ],
+    "seed": "{{seed}}",
+    "steps": 12,
+    "cfg": 7.5,
+    "sampler_name": "euler",
+    "scheduler": "normal",
+    "denoise": 1
+   }
+  },
+  "13": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "trellis_2_shape_vae_bf16.safetensors"
+   }
+  },
+  "14": {
+   "class_type": "VaeDecodeStructureTrellis2",
+   "inputs": {
+    "samples": [
+     "12",
+     0
+    ],
+    "vae": [
+     "13",
+     0
+    ],
+    "resolution": "32"
+   }
+  },
+  "15": {
+   "class_type": "Trellis2ShapeStage",
+   "inputs": {
+    "positive": [
+     "6",
+     0
+    ],
+    "negative": [
+     "6",
+     1
+    ],
+    "voxel": [
+     "14",
+     0
+    ]
+   }
+  },
+  "16": {
+   "class_type": "CFGOverride",
+   "inputs": {
+    "model": [
+     "7",
+     0
+    ],
+    "cfg": 1,
+    "start_percent": 0.769,
+    "end_percent": 1
+   }
+  },
+  "17": {
+   "class_type": "RescaleCFG",
+   "inputs": {
+    "model": [
+     "16",
+     0
+    ],
+    "multiplier": 0.5
+   }
+  },
+  "18": {
+   "class_type": "KSampler",
+   "inputs": {
+    "model": [
+     "17",
+     0
+    ],
+    "positive": [
+     "15",
+     0
+    ],
+    "negative": [
+     "15",
+     1
+    ],
+    "latent_image": [
+     "15",
+     2
+    ],
+    "seed": "{{seed}}",
+    "steps": 20,
+    "cfg": 7.5,
+    "sampler_name": "euler",
+    "scheduler": "normal",
+    "denoise": 1
+   }
+  },
+  "21": {
+   "class_type": "Trellis2UpsampleStage",
+   "inputs": {
+    "positive": [
+     "15",
+     0
+    ],
+    "negative": [
+     "15",
+     1
+    ],
+    "shape_latent": [
+     "18",
+     0
+    ],
+    "vae": [
+     "13",
+     0
+    ],
+    "target_resolution": 1024
+   }
+  },
+  "23": {
+   "class_type": "KSampler",
+   "inputs": {
+    "model": [
+     "17",
+     0
+    ],
+    "positive": [
+     "21",
+     0
+    ],
+    "negative": [
+     "21",
+     1
+    ],
+    "latent_image": [
+     "21",
+     2
+    ],
+    "seed": "{{seed}}",
+    "steps": 12,
+    "cfg": 7.5,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1
+   }
+  },
+  "19": {
+   "class_type": "VaeDecodeShapeTrellis",
+   "inputs": {
+    "samples": [
+     "23",
+     0
+    ],
+    "vae": [
+     "13",
+     0
+    ]
+   }
+  },
+  "20": {
+   "class_type": "SaveGLB",
+   "inputs": {
+    "mesh": [
+     "19",
+     0
+    ],
+    "filename_prefix": "3d/aivs"
+   }
+  }
+ }
+}

@@ -6,8 +6,8 @@
   let { job, kinds = [], onclose }: { job?: Job; kinds?: string[]; onclose: () => void } = $props();
   const el = $derived(S.lang === "el");
 
-  const kindOf = (path: string): "image" | "audio" | "video" =>
-    /\.(png|jpe?g|webp|gif)$/i.test(path) ? "image" : /\.(mp3|flac|wav|ogg|opus|m4a)$/i.test(path) ? "audio" : "video";
+  const kindOf = (path: string): "image" | "audio" | "video" | "other" =>
+    /\.(png|jpe?g|webp|gif)$/i.test(path) ? "image" : /\.(mp3|flac|wav|ogg|opus|m4a)$/i.test(path) ? "audio" : /\.(srt|vtt|glb|obj|ply)$/i.test(path) ? "other" : "video";
   const mine = $derived(job ? kindOf(job.file_path) : "");
   const MEDIA = ["image", "audio", "video"];
   const EXT: Record<string, string[]> = { image: ["png", "jpg", "jpeg", "webp"], audio: ["mp3", "wav", "flac", "ogg", "opus", "m4a"], video: ["mp4", "webm", "mov", "mkv"] };

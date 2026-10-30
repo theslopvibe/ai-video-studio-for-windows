@@ -77,6 +77,7 @@ export const api = {
   editorUrl: () => invoke<string | null>("editor_url"),
   inputImport: (path: string) => invoke<string>("input_import", { path }),
   paintUrl: () => invoke<string | null>("paint_url"),
+  textOutput: (path: string) => invoke<string>("text_output", { path }),
   imageDataUrl: (path: string) => invoke<string>("image_data_url", { path }),
   chatSend: (id: string, text: string) => invoke<ChatMessage[]>("chat_send", { id, text }),
   hardwareScan: () => invoke<Hardware>("hardware_scan"),

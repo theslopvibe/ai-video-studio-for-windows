@@ -1,0 +1,58 @@
+{
+ "meta": {
+  "name_en": "Picture → Colorize a black and white photo (DDColor)",
+  "name_el": "Εικόνα → Χρωματισμός ασπρόμαυρης φωτογραφίας (DDColor)",
+  "desc_en": "Adds natural colours to black and white photos and keeps the original detail. Runs on your PC, model about 0.9 GB.",
+  "desc_el": "Προσθέτει φυσικά χρώματα σε ασπρόμαυρες φωτογραφίες και κρατά τη λεπτομέρεια. Τρέχει στον υπολογιστή σου, μοντέλο περίπου 0.9 GB.",
+  "good_en": "Old family photos and historic pictures.",
+  "good_el": "Παλιές οικογενειακές και ιστορικές φωτογραφίες.",
+  "kind": "i2i",
+  "license": "Apache-2.0",
+  "pack": "ddcolor",
+  "vram_gb": 3,
+  "est_sec": 15,
+  "priority": 290,
+  "models": [
+   "ddcolor_modelscope"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   }
+  ],
+  "id": "colorize-ddcolor"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "DDColor_Colorize",
+   "inputs": {
+    "image": [
+     "1",
+     0
+    ],
+    "model_input_size": 512,
+    "checkpoint": "ddcolor_modelscope.pth"
+   }
+  },
+  "3": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "2",
+     0
+    ],
+    "filename_prefix": "color"
+   }
+  }
+ }
+}

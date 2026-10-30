@@ -32,6 +32,14 @@ pub fn build_script(packs: &[Value], include_local_node: bool) -> String {
                 s.push_str(&format!("node \"{repo}\" \"{name}\" \"{rev}\"\n"));
             }
         }
+        for (key, flag) in [("pip", ""), ("pip_nodeps", "--no-deps ")] {
+            for pkg in m[key].as_array().cloned().unwrap_or_default() {
+                if let Some(pkg) = pkg.as_str().filter(|p| crate::safe_pip_spec(p)) {
+                    s.push_str(&format!("$PIP install -q {flag}\"{pkg}\"
+"));
+                }
+            }
+        }
         for f in m["files"].as_array().cloned().unwrap_or_default() {
             let url = f["url"].as_str().unwrap_or("");
             let dir = f["dir"].as_str().unwrap_or("");

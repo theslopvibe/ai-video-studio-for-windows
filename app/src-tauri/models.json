@@ -390,5 +390,173 @@
     "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json"
    }
   ]
+ },
+ {
+  "id": "whisper-subs",
+  "name": "Subtitles (Whisper, faster-whisper)",
+  "kind": "audio",
+  "license": "MIT",
+  "vram_gb": 3,
+  "size_gb": 1.7,
+  "desc_el": "Υπότιτλοι από ομιλία σε 99 γλώσσες. Το μοντέλο κατεβαίνει στην πρώτη χρήση.",
+  "desc_en": "Speech to subtitles in 99 languages. The model downloads on first use.",
+  "in_template": false,
+  "nodes": [],
+  "files": [],
+  "pip": [
+   "faster-whisper==1.2.1"
+  ]
+ },
+ {
+  "id": "sam2",
+  "name": "Select objects by clicking (SAM2)",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 2,
+  "size_gb": 0.1,
+  "desc_el": "Επιλογή αντικειμένων με κλικ.",
+  "desc_en": "Select objects by clicking.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/kijai/ComfyUI-segment-anything-2",
+    "name": "ComfyUI-segment-anything-2",
+    "rev": "0c35fff5f382803e2310103357b5e985f5437f32"
+   }
+  ],
+  "files": [
+   {
+    "dir": "sam2",
+    "url": "https://huggingface.co/Kijai/sam2-safetensors/resolve/main/sam2.1_hiera_small-fp16.safetensors"
+   }
+  ]
+ },
+ {
+  "id": "erase-object",
+  "name": "Erase objects (SAM2 + LaMa)",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 3,
+  "size_gb": 0.3,
+  "desc_el": "Σβήσιμο αντικειμένων με κλικ.",
+  "desc_en": "Erase objects with a click.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/kijai/ComfyUI-segment-anything-2",
+    "name": "ComfyUI-segment-anything-2",
+    "rev": "0c35fff5f382803e2310103357b5e985f5437f32"
+   }
+  ],
+  "files": [
+   {
+    "dir": "sam2",
+    "url": "https://huggingface.co/Kijai/sam2-safetensors/resolve/main/sam2.1_hiera_small-fp16.safetensors"
+   },
+   {
+    "dir": "inpaint",
+    "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
+   }
+  ]
+ },
+ {
+  "id": "face-restore",
+  "name": "Restore faces (GFPGAN)",
+  "kind": "image",
+  "license": "Apache-2.0 code",
+  "vram_gb": 4,
+  "size_gb": 0.35,
+  "desc_el": "Βελτίωση προσώπων σε φωτογραφίες.",
+  "desc_en": "Face restoration for photos.",
+  "in_template": false,
+  "nodes": [],
+  "files": [
+   {
+    "dir": "facerestore_models",
+    "url": "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.4/GFPGANv1.4.pth"
+   }
+  ],
+  "pip": [
+   "opencv-python-headless==4.11.0.86"
+  ],
+  "pip_nodeps": [
+   "facexlib==0.3.0"
+  ]
+ },
+ {
+  "id": "ddcolor",
+  "name": "Colorize photos (DDColor)",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 3,
+  "size_gb": 0.9,
+  "desc_el": "Χρωματισμός ασπρόμαυρων φωτογραφιών.",
+  "desc_en": "Colorize black and white photos.",
+  "in_template": false,
+  "nodes": [
+   {
+    "repo": "https://github.com/kijai/ComfyUI-DDColor",
+    "name": "ComfyUI-DDColor",
+    "rev": "30d5b8e7666382a6a78404caee28dfa87f741037"
+   }
+  ],
+  "files": [
+   {
+    "dir": "@custom_nodes/ComfyUI-DDColor/checkpoints",
+    "url": "https://huggingface.co/piddnad/DDColor-models/resolve/main/ddcolor_modelscope.pth"
+   }
+  ],
+  "pip": [
+   "timm==1.0.11",
+   "opencv-python-headless==4.11.0.86"
+  ]
+ },
+ {
+  "id": "depth-da3",
+  "name": "Depth maps (Depth Anything 3)",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 2,
+  "size_gb": 0.15,
+  "desc_el": "Χάρτης βάθους από εικόνα.",
+  "desc_en": "Depth map from a picture.",
+  "in_template": false,
+  "nodes": [],
+  "files": [
+   {
+    "dir": "geometry_estimation",
+    "url": "https://huggingface.co/Comfy-Org/Depth-Anything-3/resolve/main/geometry_estimation/depth_anything_3_small.safetensors"
+   }
+  ]
+ },
+ {
+  "id": "trellis2",
+  "name": "Picture to 3D (TRELLIS.2)",
+  "kind": "image",
+  "license": "MIT",
+  "vram_gb": 12,
+  "size_gb": 8.0,
+  "desc_el": "Εικόνα σε μοντέλο 3D. Βαρύ, πειραματικό.",
+  "desc_en": "Picture to 3D model. Heavy, experimental.",
+  "in_template": false,
+  "nodes": [],
+  "files": [
+   {
+    "dir": "diffusion_models",
+    "url": "https://huggingface.co/Comfy-Org/TRELLIS.2/resolve/main/diffusion_models/trellis_2_int8_convrot.safetensors"
+   },
+   {
+    "dir": "clip_vision",
+    "url": "https://huggingface.co/Comfy-Org/TRELLIS.2/resolve/main/clip_vision/dino_v3_vit_l.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/Comfy-Org/TRELLIS.2/resolve/main/vae/trellis_2_shape_vae_bf16.safetensors"
+   },
+   {
+    "dir": "background_removal",
+    "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors"
+   }
+  ]
  }
 ]

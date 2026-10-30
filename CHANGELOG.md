@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New tools: subtitles from speech (Whisper, 99 languages, .srt/.vtt, shown in the Library), cut out or erase an object by clicking on it (SAM2 + LaMa), restore faces (GFPGAN), colorize black and white photos (DDColor), depth map (Depth Anything 3), picture to 3D model (TRELLIS.2, .glb). The image editor's AI menu has the picture tools. All are untested on real hardware yet.
+- Packs can install pinned pip packages (`pip`, `pip_nodeps`), and the helper node file gained speech-to-subtitles, LaMa erase, face restore and point helpers.
+
 - About page: removed the personal paragraph about the developer.
 
 - Step-by-step Greek guide for using Vast and the Claude Desktop extension: mcp/GUIDE.el.html.

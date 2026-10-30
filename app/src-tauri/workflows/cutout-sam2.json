@@ -1,0 +1,111 @@
+{
+ "meta": {
+  "name_en": "Picture → Cut out an object by clicking on it (SAM2)",
+  "name_el": "Εικόνα → Κόψε ένα αντικείμενο με κλικ (SAM2)",
+  "desc_en": "Click on an object and get it cut out with a transparent background. Best used from the Image editor: AI menu → “Cut out object (click)”. Runs on your PC, small model (92 MB).",
+  "desc_el": "Κάνεις κλικ σε ένα αντικείμενο και το παίρνεις κομμένο με διαφανές φόντο. Καλύτερα από τον editor εικόνας: μενού AI → «Cut out object (click)». Τρέχει στον υπολογιστή σου, μικρό μοντέλο (92 MB).",
+  "good_en": "Take one object or person out of a photo, make stickers, build collages.",
+  "good_el": "Βγάζεις ένα αντικείμενο ή άνθρωπο από φωτογραφία, αυτοκόλλητα, κολάζ.",
+  "kind": "i2i",
+  "license": "Apache-2.0",
+  "pack": "sam2",
+  "vram_gb": 2,
+  "est_sec": 15,
+  "priority": 260,
+  "models": [
+   "sam2.1_hiera_small"
+  ],
+  "inputs": [
+   {
+    "key": "image",
+    "type": "image",
+    "required": true,
+    "label_en": "Picture",
+    "label_el": "Εικόνα"
+   },
+   {
+    "key": "points",
+    "type": "text",
+    "required": true,
+    "default": "512,512",
+    "label_en": "Point on the object: x,y in pixels from the top-left (the image editor fills this in for you)",
+    "label_el": "Σημείο στο αντικείμενο: x,y σε pixels από πάνω αριστερά (ο editor εικόνας το συμπληρώνει μόνος του)"
+   }
+  ],
+  "id": "cutout-sam2"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "AIVSLoadImageBase64",
+   "inputs": {
+    "image_b64": "{{image}}"
+   }
+  },
+  "2": {
+   "class_type": "DownloadAndLoadSAM2Model",
+   "inputs": {
+    "model": "sam2.1_hiera_small.safetensors",
+    "segmentor": "single_image",
+    "device": "cuda",
+    "precision": "fp16"
+   }
+  },
+  "9": {
+   "class_type": "AIVSPointsToJson",
+   "inputs": {
+    "points": "{{points}}"
+   }
+  },
+  "3": {
+   "class_type": "Sam2Segmentation",
+   "inputs": {
+    "sam2_model": [
+     "2",
+     0
+    ],
+    "image": [
+     "1",
+     0
+    ],
+    "keep_model_loaded": false,
+    "coordinates_positive": [
+     "9",
+     0
+    ],
+    "individual_objects": false
+   }
+  },
+  "4": {
+   "class_type": "InvertMask",
+   "inputs": {
+    "mask": [
+     "3",
+     0
+    ]
+   }
+  },
+  "5": {
+   "class_type": "JoinImageWithAlpha",
+   "inputs": {
+    "image": [
+     "1",
+     0
+    ],
+    "alpha": [
+     "4",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "5",
+     0
+    ],
+    "filename_prefix": "cutout"
+   }
+  }
+ }
+}

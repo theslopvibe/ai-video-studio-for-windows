@@ -18,7 +18,12 @@ AI_MENU = """	{
 			{ name: 'Generate image into layer', ellipsis: true, target: 'ai/ai.generate' },
 			{ name: 'Change picture with words', ellipsis: true, target: 'ai/ai.edit' },
 			{ name: 'Upscale layer (sharper, 4x larger)', target: 'ai/ai.upscale' },
-			{ name: 'Remove background', target: 'ai/ai.remove_background' }
+			{ name: 'Remove background', target: 'ai/ai.remove_background' },
+			{ name: 'Cut out object (click)', target: 'ai/ai.cutout' },
+			{ name: 'Erase object (click)', target: 'ai/ai.erase' },
+			{ name: 'Restore faces', target: 'ai/ai.faces' },
+			{ name: 'Colorize black and white photo', target: 'ai/ai.colorize' },
+			{ name: 'Depth map', target: 'ai/ai.depth' }
 		]
 	},
 	{

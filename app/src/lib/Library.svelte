@@ -12,6 +12,10 @@
 
   const src = (j: Job) => convertFileSrc(j.file_path);
   const isAud = (j: Job) => /\.(mp3|flac|wav|ogg|opus)$/i.test(j.file_path);
+  const isTxt = (j: Job) => /\.(srt|vtt)$/i.test(j.file_path);
+  const is3d = (j: Job) => /\.(glb|obj|ply)$/i.test(j.file_path);
+  let text = $state("");
+  $effect(() => { text = ""; if (open && isTxt(open)) api.textOutput(open.file_path).then((t) => (text = t)).catch((x) => (text = String(x))); });
   const isImg = (j: Job) => /\.(png|jpe?g|webp|gif)$/i.test(j.file_path);
   const wfName = (id: string) => { const w = S.workflows.find((x) => x.meta.id === id); return w ? (S.lang === "el" ? w.meta.name_el : w.meta.name_en) : id; };
   const when = (t: number) => new Date(t * 1000).toLocaleString(S.lang === "el" ? "el-GR" : "en-GB");
@@ -49,6 +53,10 @@
             <img src={src(j)} alt={j.prompt} />
           {:else if isAud(j)}
             <div class="aud">♪</div>
+          {:else if isTxt(j)}
+            <div class="aud">CC</div>
+          {:else if is3d(j)}
+            <div class="aud">3D</div>
           {:else}
             <!-- svelte-ignore a11y_media_has_caption -->
             <video src={src(j) + "#t=0.1"} preload="metadata" muted></video>
@@ -65,6 +73,11 @@
     <div class="modal" role="dialog" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
       {#if isImg(open)}
         <img class="full" src={src(open)} alt={open.prompt} />
+      {:else if isTxt(open)}
+        <pre class="subs">{text}</pre>
+        <div class="row"><button onclick={() => navigator.clipboard.writeText(text).then(() => S.notify(S.t("copied")))}>{S.t("copy_prompt").replace(/.*/, S.lang === "el" ? "Αντιγραφή υποτίτλων" : "Copy subtitles")}</button></div>
+      {:else if is3d(open)}
+        <p class="dim">{S.lang === "el" ? "Αρχείο 3D. Άνοιξέ το με το πρόγραμμα 3D της επιλογής σου (π.χ. Windows 3D Viewer, Blender)." : "3D file. Open it with your 3D viewer (for example Windows 3D Viewer or Blender)."}</p>
       {:else if isAud(open)}
         <!-- svelte-ignore a11y_media_has_caption -->
         <audio src={src(open)} controls autoplay style="width:100%"></audio>
@@ -94,6 +107,7 @@
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
   .empty { padding: 48px 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .subs { white-space: pre-wrap; max-height: 50vh; overflow: auto; background: var(--panel2); padding: 10px; border-radius: 8px; font-size: 13px; }
   .aud { display: grid; place-items: center; height: 120px; font-size: 40px; color: var(--dim); background: var(--panel2); }
   .clip { padding: 0; overflow: hidden; text-align: left; background: var(--panel); border-radius: 10px; display: block; }
   .clip img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; background: #000; pointer-events: none; }
