@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { LANGS } from "./translations";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { S } from "$lib/store.svelte";
@@ -139,9 +140,10 @@
       <h1>{t("title")}</h1>
       <p class="lead">{t("lead")}</p>
       <p class="dim">{t("free")}</p>
-      <div class="row">
-        <button class:primary={S.lang === "en"} onclick={() => { S.lang = "en"; S.set("lang", "en"); }}>English</button>
-        <button class:primary={S.lang === "el"} onclick={() => { S.lang = "el"; S.set("lang", "el"); }}>Ελληνικά</button>
+      <div class="row" style="flex-wrap:wrap">
+        {#each LANGS as l}
+          <button class:primary={S.lang === l.code} onclick={() => { S.lang = l.code; S.set("lang", l.code); }}>{l.name}</button>
+        {/each}
       </div>
       <div class="nav"><button class="primary big" onclick={() => go(1)}>{t("start")} →</button></div>
 

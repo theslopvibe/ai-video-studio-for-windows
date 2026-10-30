@@ -109,7 +109,7 @@
 
   <div class="card">
     <h2>{S.t("language")}</h2>
-    <div class="row">
+    <div class="row" style="flex-wrap:wrap">
       {#each LANGS as l}
         <button class:primary={S.lang === l.code} onclick={() => setLang(l.code)}>{l.name}</button>
       {/each}
