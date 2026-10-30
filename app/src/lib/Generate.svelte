@@ -159,19 +159,36 @@
     S.notify(`${n} ${S.t("queued_n")}`);
     prompt = ""; before = null; imgs = {}; scenes = [];
   }
+
+  // Three kinds of result; video also has "from a picture". Labels reuse the translated "A → B" tab names (the part after the arrow).
+  const MEDIA = [
+    { id: "video", kind: "t2v" as const, label: "tab_t2v" as const, icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>' },
+    { id: "image", kind: "t2i" as const, label: "tab_t2i" as const, icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4"/>' },
+    { id: "audio", kind: "t2a" as const, label: "tab_t2a" as const, icon: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
+  ];
+  const media = $derived(kind === "t2i" ? "image" : kind === "t2a" ? "audio" : "video");
+  const tail = (s: string) => (s.includes("→") ? s.split("→").pop()!.trim() : s);
 </script>
 
-<div class="page">
+<div class="page form">
   <h1>{S.t("nav_generate")}</h1>
-  <p class="dim">{S.project?.name} · {S.t("saving_to")}: {S.project?.dir}</p>
+  <p class="dim small">{S.t("saving_to")}: {S.project?.dir}</p>
 
   <div class="card">
-    <div class="row" style="margin-bottom:12px">
-      <button class={kind === "t2v" ? "primary" : ""} onclick={() => (kind = "t2v")}>{S.t("tab_t2v")}</button>
-      <button class={kind === "i2v" ? "primary" : ""} onclick={() => (kind = "i2v")}>{S.t("tab_i2v")}</button>
-      <button class={kind === "t2i" ? "primary" : ""} onclick={() => (kind = "t2i")}>{S.t("tab_t2i")}</button>
-      <button class={kind === "t2a" ? "primary" : ""} onclick={() => (kind = "t2a")}>{S.t("tab_t2a")}</button>
+    <div class="media" role="tablist">
+      {#each MEDIA as m}
+        <button role="tab" aria-selected={media === m.id} class="mbtn" class:on={media === m.id} onclick={() => (kind = m.kind === "t2v" && kind === "i2v" ? "i2v" : m.kind)}>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html m.icon}</svg>
+          <span>{tail(S.t(m.label))}</span>
+        </button>
+      {/each}
     </div>
+    {#if media === "video"}
+      <div class="from row small">
+        <button class="seg" class:on={kind === "t2v"} onclick={() => (kind = "t2v")}>{S.t("tab_t2v")}</button>
+        <button class="seg" class:on={kind === "i2v"} onclick={() => (kind = "i2v")}>{S.t("tab_i2v")}</button>
+      </div>
+    {/if}
 
     {#if kind === "i2v"}
       <div class="field">
@@ -203,6 +220,17 @@
         <div class="small dim" style="margin-top:4px">{S.t("img_hint")}</div>
       </div>
     {/if}
+
+    <div class="field">
+      <label for="prompt">{S.t("prompt")}</label>
+      <textarea id="prompt" bind:value={prompt} placeholder={S.t("prompt_ph")}></textarea>
+      <div class="row wrap" style="margin-top:8px">
+        <button onclick={improve} disabled={busy}>✨ {busy ? S.t("enhancing") : S.t("enhance")}</button>
+        {#if before !== null}<button class="ghost" onclick={() => { prompt = before!; before = null; }}>{S.t("undo")}</button>{/if}
+        {#if kind !== "i2v"}<label class="row small dim" style="margin-left:auto"><input type="checkbox" bind:checked={batch} />{S.t("batch")}</label>{/if}
+        {#if kind === "i2v"}<button style="margin-left:auto" onclick={addScene}>＋ {S.t("scene_add")}</button>{/if}
+      </div>
+    </div>
 
     <div class="field">
       <label for="mode">{S.t("mode")}</label>
@@ -250,17 +278,6 @@
           <button class="ghost" onclick={async () => { await S.set("models_selected", [...(S.settings.models_selected ?? "").split(",").filter(Boolean), wf!.meta.pack!].join(",")); S.page = "models"; }}>{S.t("pack_go")}</button>
         </div>
       {/if}
-    </div>
-
-    <div class="field">
-      <label for="prompt">{S.t("prompt")}</label>
-      <textarea id="prompt" bind:value={prompt} placeholder={S.t("prompt_ph")}></textarea>
-      <div class="row wrap" style="margin-top:8px">
-        <button onclick={improve} disabled={busy}>✨ {busy ? S.t("enhancing") : S.t("enhance")}</button>
-        {#if before !== null}<button class="ghost" onclick={() => { prompt = before!; before = null; }}>{S.t("undo")}</button>{/if}
-        {#if kind !== "i2v"}<label class="row small dim" style="margin-left:auto"><input type="checkbox" bind:checked={batch} />{S.t("batch")}</label>{/if}
-        {#if kind === "i2v"}<button style="margin-left:auto" onclick={addScene}>＋ {S.t("scene_add")}</button>{/if}
-      </div>
     </div>
 
     {#if kind === "i2v" && scenes.length}
@@ -312,11 +329,11 @@
       {/if}
     {/if}
 
-    <div class="row" style="margin-top:10px">
+    <div class="row submitbar">
       <div class="grow small dim">
         {#if estimate > 0}{S.t("est_cost")}: <b>${estimate.toFixed(3)}</b> ({chosenGpu ? chosenGpu.name.replaceAll("_", " ") + " · " : ""}${price.toFixed(2)}/{S.t("per_hour")}) {S.t("est_cost_note")}{:else}{S.t("no_price")}{/if}
       </div>
-      <button class="primary" onclick={submit} disabled={!wf}>{batch || scenes.length ? S.t("add_queue_n") : S.t("add_queue")}</button>
+      <button class="primary big" onclick={submit} disabled={!wf}>{batch || scenes.length ? S.t("add_queue_n") : S.t("add_queue")}</button>
     </div>
   </div>
 
@@ -327,3 +344,16 @@
     <p class="dim">{S.t("nothing_running")}</p>
   {/if}
 </div>
+
+<style>
+  .media { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .mbtn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 10px; background: var(--panel2); border-radius: 10px; color: var(--dim); font-family: var(--font-head); font-size: 16px; }
+  .mbtn.on { color: var(--text); border-color: var(--accent); background: var(--sel); }
+  .mbtn.on svg { color: var(--accent); }
+  .from { gap: 4px; margin: -4px 0 16px; }
+  .seg { background: transparent; border-radius: 99px; padding: 4px 12px; color: var(--dim); }
+  .seg.on { color: var(--text); border-color: var(--accent); background: var(--sel); }
+  .submitbar { position: sticky; bottom: -18px; margin: 14px -18px -18px; padding: 12px 18px; background: var(--panel); border-top: 1px solid var(--line); border-radius: 0 0 var(--r-sheet) var(--r-sheet); }
+  .big { padding: 10px 26px; font-size: 15px; }
+  #prompt { min-height: 140px; font-size: 15px; line-height: 1.5; }
+</style>

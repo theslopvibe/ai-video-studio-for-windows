@@ -43,7 +43,7 @@
   }
 </script>
 
-<div class="page">
+<div class="page form">
   <h1>{S.t("projects_title")}</h1>
   <p class="dim">{S.t("projects_intro")}</p>
 

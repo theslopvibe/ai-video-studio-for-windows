@@ -1,4 +1,5 @@
 <script lang="ts">
+  let { embedded = false }: { embedded?: boolean } = $props();
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { api, type Job } from "./api";
   import { S } from "./store.svelte";
@@ -30,14 +31,14 @@
   }
 </script>
 
-<div class="page">
+<div class={embedded ? "" : "page"}>
   <div class="row">
     <h1 class="grow">{S.t("nav_library")} <span class="dim small">· {S.project?.name}</span></h1>
     <button onclick={() => S.run(() => api.reveal(S.project!.dir))}>{S.t("open_folder")}</button>
   </div>
 
   {#if clips.length === 0}
-    <p class="dim">{S.t("library_empty")}</p>
+    <div class="empty"><p class="dim">{S.t("library_empty")}</p><button class="primary" onclick={() => (S.page = "generate")}>✦ {S.t("nav_generate")}</button></div>
   {:else}
     <div class="grid">
       {#each clips as j (j.id)}
@@ -88,6 +89,7 @@
 
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+  .empty { padding: 48px 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
   .aud { display: grid; place-items: center; height: 120px; font-size: 40px; color: var(--dim); background: var(--panel2); }
   .clip { padding: 0; overflow: hidden; text-align: left; background: var(--panel); border-radius: 10px; display: block; }
   .clip img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; background: #000; pointer-events: none; }

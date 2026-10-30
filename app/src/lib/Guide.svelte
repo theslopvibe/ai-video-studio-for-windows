@@ -7,7 +7,7 @@
   const go = (page: "generate" | "models" | "settings" | "gpu") => (S.page = page);
 </script>
 
-<div class="page">
+<div class="page form">
   <h1>{S.t("nav_guide")}</h1>
   <p class="dim">{S.t("guide_intro")}</p>
 
