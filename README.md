@@ -2,7 +2,7 @@
 
 A free, open-source Windows desktop app that turns a text prompt or a picture into a video or an image with open-source AI models (LTX-Video, Wan 2.2, and more). Think of it as a desktop alternative to Higgsfield and similar web tools, except it runs on your own graphics card or on a cloud GPU you rent by the minute, and everything you make stays on your computer.
 
-Developed by [slopvibe.com](https://slopvibe.com). Released under the MIT license.
+Developed by [theslopvibe.com](https://theslopvibe.com). Released under the MIT license.
 
 Ελληνικά: [README.el.md](README.el.md)
 

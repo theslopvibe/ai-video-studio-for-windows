@@ -252,8 +252,15 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://slopvibe.com" target="_blank" rel="noreferrer">slopvibe.com</a>. v{S.boot ? "0.1.0" : ""}</p>
-    <p><a href="https://theslopvibe.com/free-apps/ai-video-studio-for-windows" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a></p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.1.0" : ""}</p>
+    <p>{S.lang === "el"
+      ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
+      : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>
+    <div class="row">
+      <a class="btn" href="https://theslopvibe.com/free-apps/ai-video-studio-for-windows" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a>
+      <a class="btn ghost" href="https://theslopvibe.com/free-apps" target="_blank" rel="noreferrer">{S.lang === "el" ? "Περισσότερες δωρεάν εφαρμογές" : "More free apps"}</a>
+      <a class="btn ghost" href="https://theslopvibe.com/contact" target="_blank" rel="noreferrer">{S.lang === "el" ? "Επικοινωνία" : "Hire us / contact"}</a>
+    </div>
     <p class="small dim">{ct(S.lang, "about_models")}</p>
   </div>
 </div>
