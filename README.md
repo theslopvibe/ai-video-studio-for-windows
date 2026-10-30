@@ -23,6 +23,8 @@ See [ROADMAP.md](ROADMAP.md) for what is next.
 
 ## Install
 
+☕ Free forever. If it helps you, [buy us a coffee](https://theslopvibe.com/free-apps/ai-video-studio-for-windows).
+
 1. Download the latest `AI Video Studio For Windows_0.1.0_x64-setup.exe` from the Releases page.
 2. Run it. It installs for the current user and needs no admin rights. If Windows shows "Windows protected your PC", choose **More info → Run anyway** (the installer is not code-signed yet).
 3. Follow the setup wizard.

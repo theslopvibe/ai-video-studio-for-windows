@@ -253,6 +253,7 @@
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
     <p>{ct(S.lang, "about_text")} <a href="https://slopvibe.com" target="_blank" rel="noreferrer">slopvibe.com</a>. v{S.boot ? "0.1.0" : ""}</p>
+    <p><a href="https://theslopvibe.com/free-apps/ai-video-studio-for-windows" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a></p>
     <p class="small dim">{ct(S.lang, "about_models")}</p>
   </div>
 </div>
