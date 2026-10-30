@@ -40,7 +40,7 @@
 {:else if S.ready}
   <div class="shell">
     <aside>
-      <div class="brand">AI Video Studio</div>
+      <div class="brand">AI Video Studio For Windows</div>
       <div class="proj">
         <div class="small dim">{S.t("project")}</div>
         <select value={S.projectId} onchange={(e) => pick(e.currentTarget.value)}>

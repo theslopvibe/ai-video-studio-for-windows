@@ -2,7 +2,7 @@ import type { Lang } from "./i18n";
 
 // English first. Greek is the second language.
 const W = {
-  title: { en: "Welcome to AI Video Studio", el: "Καλώς ήρθες στο AI Video Studio" },
+  title: { en: "Welcome to AI Video Studio For Windows", el: "Καλώς ήρθες στο AI Video Studio For Windows" },
   lead: {
     en: "Turn a text prompt or a picture into a video or an image, using open-source AI models. This quick setup gets everything ready, step by step. It takes a few minutes, and most of that is downloading.",
     el: "Φτιάξε video ή εικόνα από ένα κείμενο ή μια φωτογραφία, με open-source μοντέλα AI. Αυτή η γρήγορη ρύθμιση ετοιμάζει τα πάντα, βήμα βήμα. Θέλει λίγα λεπτά και τον περισσότερο χρόνο τον πιάνει το κατέβασμα.",

@@ -1,8 +1,8 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "AI Video Studio"
-authors = ["AI Video Studio"]
+description = "AI Video Studio For Windows"
+authors = ["AI Video Studio For Windows"]
 edition = "2021"
 
 [lib]

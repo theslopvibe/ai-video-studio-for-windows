@@ -30,7 +30,7 @@ const C = {
   prov_note: { en: "Keys for the built-in chat (GLM, DeepSeek, OpenRouter) and for hosted video and image APIs (fal.ai, Replicate). They are stored in the Windows Credential Manager. Ollama needs no key.", el: "Κλειδιά για το chat (GLM, DeepSeek, OpenRouter) και για hosted APIs video και εικόνας (fal.ai, Replicate). Αποθηκεύονται στο Windows Credential Manager. Το Ollama δεν θέλει κλειδί." },
   save_test: { en: "Save and test", el: "Αποθήκευση και έλεγχος" },
   about_title: { en: "About", el: "Σχετικά" },
-  about_text: { en: "AI Video Studio is free and open source (MIT license). Developed by", el: "Το AI Video Studio είναι δωρεάν και open source (άδεια MIT). Αναπτύχθηκε από το" },
+  about_text: { en: "AI Video Studio For Windows is free and open source (MIT license). Developed by", el: "Το AI Video Studio For Windows είναι δωρεάν και open source (άδεια MIT). Αναπτύχθηκε από το" },
   about_models: { en: "The AI models you download have their own licenses; each model's license is shown before you install it.", el: "Τα μοντέλα AI που κατεβάζεις έχουν τις δικές τους άδειες· η άδεια κάθε μοντέλου φαίνεται πριν το εγκαταστήσεις." },
   custom_model: { en: "Custom…", el: "Άλλο…" },
   you: { en: "You", el: "Εσύ" },

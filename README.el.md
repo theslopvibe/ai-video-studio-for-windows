@@ -1,10 +1,10 @@
-# AI Video Studio
+# AI Video Studio For Windows
 
 Windows εφαρμογή που φτιάχνει AI videos από prompt (ελληνικά ή αγγλικά). Η παραγωγή τρέχει σε cloud GPU στο **Vast.ai Serverless** με **Wan 2.2** (open-source, Apache 2.0). Δεν πληρώνεις όταν δεν παράγεις. Τα videos σώζονται **τοπικά στον υπολογιστή σου**.
 
 ## Εγκατάσταση
 
-1. Τρέξε το `AI Video Studio_0.1.0_x64-setup.exe` (ανά χρήστη, **χωρίς admin**, ~3 MB).
+1. Τρέξε το `AI Video Studio For Windows_0.1.0_x64-setup.exe` (ανά χρήστη, **χωρίς admin**, ~3 MB).
 2. Αν τα Windows δείξουν «Windows protected your PC» (ο installer δεν έχει πληρωμένο certificate): **More info → Run anyway**.
 3. Το WebView2 που χρειάζεται η εφαρμογή **εγκαθίσταται αυτόματα** από τον installer αν λείπει.
 

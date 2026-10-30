@@ -1,4 +1,4 @@
-# AI Video Studio
+# AI Video Studio For Windows
 
 A free, open-source Windows desktop app that turns a text prompt or a picture into a video or an image with open-source AI models (LTX-Video, Wan 2.2, and more). Think of it as a desktop alternative to Higgsfield and similar web tools, except it runs on your own graphics card or on a cloud GPU you rent by the minute, and everything you make stays on your computer.
 
@@ -23,7 +23,7 @@ See [ROADMAP.md](ROADMAP.md) for what is next.
 
 ## Install
 
-1. Download the latest `AI Video Studio_x64-setup.exe` from the Releases page.
+1. Download the latest `AI Video Studio For Windows_0.1.0_x64-setup.exe` from the Releases page.
 2. Run it. It installs for the current user and needs no admin rights. If Windows shows "Windows protected your PC", choose **More info → Run anyway** (the installer is not code-signed yet).
 3. Follow the setup wizard.
 

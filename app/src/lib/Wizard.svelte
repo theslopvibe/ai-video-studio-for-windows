@@ -122,7 +122,7 @@
 
 <div class="wiz">
   <aside>
-    <div class="brand">AI Video Studio</div>
+    <div class="brand">AI Video Studio For Windows</div>
     <ol>
       {#each steps as s, i}
         <li class:on={i === step} class:done={i < step}>

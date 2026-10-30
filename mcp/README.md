@@ -1,12 +1,12 @@
-# AI Video Studio για Claude Desktop
+# AI Video Studio For Windows για Claude Desktop
 
-Το Claude μιλά με την εφαρμογή AI Video Studio και φτιάχνει video από το chat.
+Το Claude μιλά με την εφαρμογή AI Video Studio For Windows και φτιάχνει video από το chat.
 
 ## Εγκατάσταση (μία φορά)
-1. Εγκατάστησε/ενημέρωσε το **AI Video Studio** (`AI Video Studio_0.1.0_x64-setup.exe`, η έκδοση με το «τοπικό API»).
+1. Εγκατάστησε/ενημέρωσε το **AI Video Studio For Windows** (`AI Video Studio For Windows_0.1.0_x64-setup.exe`, η έκδοση με το «τοπικό API»).
 2. Άνοιξε την εφαρμογή, βάλε Vast API key και κάνε ρύθμιση endpoint (Settings), όπως στις Οδηγίες της.
 3. Διπλό κλικ στο `ai-video-studio.mcpb`, μετά «Install» στο Claude Desktop (ή Settings → Extensions → Advanced → Install Extension).
-4. Άνοιξε νέο chat. Στα εργαλεία πρέπει να φαίνεται το «AI Video Studio».
+4. Άνοιξε νέο chat. Στα εργαλεία πρέπει να φαίνεται το «AI Video Studio For Windows».
 
 ## Χρήση
 Η εφαρμογή πρέπει να είναι ανοιχτή. Στο chat γράφεις π.χ.:

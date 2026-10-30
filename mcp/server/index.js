@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// AI Video Studio MCP server (stdio, no dependencies). Talks to the desktop app's local API.
+// AI Video Studio For Windows MCP server (stdio, no dependencies). Talks to the desktop app's local API.
 // The app writes port+token to %APPDATA%\com.aivideostudio.app\api.json.
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
 const INSTRUCTIONS = `Model choice: list_workflows returns for each mode its license (open = free on the user's PC or a rented GPU, paid = billed per result by a provider and needs an API key), good_for (what it does best) and est_usd_per_result. When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price, and ask before using a paid one.
-AI Video Studio generates AI video (open-source models: LTX-Video, Wan 2.2) on rented cloud GPUs (Vast.ai) from the user's own desktop app. The app must be running on the user's PC.
+AI Video Studio For Windows generates AI video (open-source models: LTX-Video, Wan 2.2) on rented cloud GPUs (Vast.ai) from the user's own desktop app. The app must be running on the user's PC.
 Workflow:
-1. Call video_studio_status first. If it fails, tell the user to open the "AI Video Studio" app.
+1. Call video_studio_status first. If it fails, tell the user to open the "AI Video Studio For Windows" app.
 2. Each video costs real money (about 0.05-0.50 USD, more for long clips on big GPUs). Before generate_video, tell the user the model, length and rough cost and get a clear yes. Only then pass user_confirmed=true. Batches: one confirmation for the whole batch is enough if the user approved the count and cost.
 3. generate_video returns a job id at once; generation takes 1-15 minutes (cold start of a GPU is the slow part). Poll with get_job (wait_seconds up to 45) until status is done or failed. Do not start duplicate jobs while waiting.
 4. When done, file_path is the .mp4 on the user's disk. Pass it to editing tools/skills. Report failures with the error text; make_report gives a diagnostic file.
@@ -22,7 +22,7 @@ function apiInfo() {
   try {
     return JSON.parse(fs.readFileSync(f, "utf8"));
   } catch {
-    throw new Error("Το AI Video Studio δεν έχει τρέξει ακόμα σε αυτό τον υπολογιστή. Εγκατάστησέ το και άνοιξέ το μία φορά.");
+    throw new Error("Το AI Video Studio For Windows δεν έχει τρέξει ακόμα σε αυτό τον υπολογιστή. Εγκατάστησέ το και άνοιξέ το μία φορά.");
   }
 }
 
@@ -36,7 +36,7 @@ async function call(method, route, body) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error("Το AI Video Studio δεν τρέχει. Πες στον χρήστη να ανοίξει την εφαρμογή «AI Video Studio» και ξαναδοκίμασε.");
+    throw new Error("Το AI Video Studio For Windows δεν τρέχει. Πες στον χρήστη να ανοίξει την εφαρμογή «AI Video Studio For Windows» και ξαναδοκίμασε.");
   }
   const text = await res.text();
   let data;
@@ -51,7 +51,7 @@ const DONE = new Set(["done", "failed", "cancelled"]);
 const TOOLS = [
   {
     name: "video_studio_status",
-    description: "Check that AI Video Studio is running and configured (API keys present, output folder, active jobs). Call this first.",
+    description: "Check that AI Video Studio For Windows is running and configured (API keys present, output folder, active jobs). Call this first.",
     inputSchema: { type: "object", properties: {} },
     run: () => call("GET", "/v1/status"),
   },
