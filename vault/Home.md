@@ -18,3 +18,7 @@ Windows desktop app (Tauri 2 + Rust + Svelte 5): prompt → mp4 using **Wan 2.2*
 - [[Next steps]] — first real run checklist and backlog
 
 Repo root: `E:\claude\video-generator` (`app/` code, `dist/` installer, `PLAN.md`, `README.md` (Greek, user-facing), `memory.md` (handoff)).
+
+
+## Open source (2026-10-30)
+Δημόσιο repo: https://github.com/theslopvibe/ai-video-studio-for-windows · Release v0.1.0 με installer · Donate: https://ko-fi.com/slopvibe · Developer: theslopvibe.com · Site tab: https://theslopvibe.com/free-apps · Επόμενα: [[Next steps]], `ROADMAP.md`.

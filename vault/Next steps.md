@@ -1,3 +1,5 @@
+> **2026-10-30:** το app είναι πλέον δημόσιο (https://github.com/theslopvibe/ai-video-studio-for-windows, MIT, Ko-fi https://ko-fi.com/slopvibe, developer theslopvibe.com). Τρέχον πλάνο: redesign Image/Video/Audio + 10 γλώσσες, audio/music, editor (OpenCut/ffmpeg), auto-update από GitHub, διαχείριση PR άλλων, σελίδα Pages με screenshots. Λεπτομέρειες: `memory.md` (κορυφή) και `ROADMAP.md`.
+
 ---
 tags: [ai-video-studio, todo]
 ---
