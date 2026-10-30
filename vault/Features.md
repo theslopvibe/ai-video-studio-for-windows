@@ -39,3 +39,6 @@ gzip+base64 block prepended after the template's shebang, between `# >>> AIVS BE
 - Helper nodes (ours, MIT): `AIVSPointsToJson`, `AIVSLamaErase` (big-lama.pt in models/inpaint, crop-around-mask), `AIVSFaceRestore` (facexlib + spandrel GFPGAN; facexlib installed `--no-deps` via pack `pip_nodeps`; weights licence grey).
 - Workflows: whisper-subtitles(+audio), cutout-sam2, erase-object (SAM2 kijai pinned `0c35fff` + LaMa), face-restore-gfpgan, colorize-ddcolor (kijai DDColor pinned), depth-da3 (core DA3), trellis2-image-to-3d. Image editor AI menu: click-to-point tools (`pick_point` in `editor/paint/ai.js`), faces, colorize, depth.
 - Pack fields: `pip`, `pip_nodeps` (strict `name==version`, `safe_pip_spec`), node `rev` (pinned commit), file `dir` starting `@custom_nodes/`.
+
+## Auto-update (0.7.0)
+Tauri updater plugin, endpoint `releases/latest/download/latest.json`, key `~/.aivs-keys/updater.key` (public key in tauri.conf.json). `app/scripts/make-latest-json.mjs` builds latest.json and the hyphenated installer name.

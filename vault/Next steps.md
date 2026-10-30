@@ -25,3 +25,6 @@ Vast key is stored in the app and works, but the account has **no endpoint `comf
 - Auto-update, log viewer, per-project default mode.
 
 - (2026-10-30) Re-run wizard, install packs one by one and fix workflows on first real runs (see Known limits 12). Then: SAM2 select-object tool, TTS/music language lists for ACE-Step, auto-update, issue/PR templates, screenshots page, deeper Models/GPU/Logs redesign, native review of translations, 29 EN/EL-only inline strings (+ new Chain/Editor strings are EN/EL only).
+
+## 2026-10-30: v0.7.0 done
+Signed auto-update (Settings > About > Check for updates), issue/PR templates. Next: test update flow with 0.7.1; real-hardware tests of tool packs; sha256 checks; screenshots page; Models/GPU/Logs redesign.
