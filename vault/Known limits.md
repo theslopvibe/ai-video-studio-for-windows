@@ -18,3 +18,6 @@ tags: [ai-video-studio, risk]
 11. Claude Code CLI needs login once; floor ≈ 0.7k input tokens per call.
 
 - MCP/API: δοκιμασμένο μόνο χωρίς πραγματικό job· `resolve_gpu` δεν δοκιμάστηκε με πραγματικό Vast key· το `.mcpb` δεν έχει δοκιμαστεί σε Claude Desktop.
+
+12. v0.5.0 tools (voice, background removal, upscale, Qwen edit, RIFE, LatentSync, chaining at run time) were written from node source code by research agents and never run: expect fixes to node/input names on the first real run (`SaveVideo` format/codec keys, `LoadAudio` decode, Kokoro/kokoro-onnx version, Chatterbox VRAM on 8 GB). Local ComfyUI + models were deleted on request: re-run the wizard first.
+13. Image editor AI menu: checked only that the servers answer, not clicked in a real window.

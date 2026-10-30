@@ -125,12 +125,28 @@ fn reload_workflows(st: State<AppState>) -> (Vec<workflows::Workflow>, Vec<Strin
 /// Only files inside the app's own `inputs` folder may be read or deleted through a `file:` job parameter.
 const MEDIA_EXT: &[&str] = &["png", "jpg", "jpeg", "webp", "mp3", "wav", "flac", "ogg", "opus", "m4a", "mp4", "webm", "mov", "mkv"];
 
+/// `image`, `audio_target`, `video_2`: a media type, optionally followed by `_` and lowercase letters/digits only.
 fn is_media_key(k: &str) -> bool {
-    ["image", "audio", "video"].iter().any(|p| k == *p || k.strip_prefix(p).is_some_and(|r| r.starts_with('_')))
+    ["image", "audio", "video"].iter().any(|p| {
+        k == *p || k.strip_prefix(p).and_then(|r| r.strip_prefix('_')).is_some_and(|r| !r.is_empty() && r.len() <= 24 && r.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
+    })
 }
 
 /// Copies a picture, sound or clip into the inputs folder and returns the `file:` reference jobs use.
 pub fn stash_input(st: &AppState, src: &Path, tag: &str) -> Result<String, String> {
+    // never reach for network shares or device paths (credential leak / hang): only real local files
+    let shown = src.to_string_lossy().replace('/', "\\");
+    if shown.starts_with("\\\\") && !shown.starts_with("\\\\?\\") {
+        return Err("Network and device paths are not allowed.".into());
+    }
+    let real = std::fs::canonicalize(src).map_err(e)?;
+    if real.to_string_lossy().starts_with("\\\\?\\UNC") {
+        return Err("Network paths are not allowed.".into());
+    }
+    let src = real.as_path();
+    if !tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("Bad file tag.".into());
+    }
     let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
     if !MEDIA_EXT.contains(&ext.as_str()) {
         return Err(format!("Unsupported file type: .{ext}"));
@@ -142,6 +158,9 @@ pub fn stash_input(st: &AppState, src: &Path, tag: &str) -> Result<String, Strin
     let dir = st.data_dir.join("inputs");
     std::fs::create_dir_all(&dir).map_err(e)?;
     let dest = dir.join(format!("{tag}.{ext}"));
+    if dest.parent() != Some(dir.as_path()) {
+        return Err("Bad destination.".into());
+    }
     std::fs::copy(src, &dest).map_err(e)?;
     Ok(format!("file:{}", dest.to_string_lossy()))
 }
@@ -161,7 +180,7 @@ pub fn resolve_media_refs(st: &AppState, job_id: &str, p: &mut Map<String, Value
                 }
                 return Err("That earlier result is not available (it failed, was cancelled or is not finished).".into());
             }
-            p.insert(k.clone(), json!(stash_input(st, Path::new(&job.file_path), &format!("{job_id}-{k}"))?));
+            p.insert(k.clone(), json!(stash_input(st, Path::new(&job.file_path), &format!("{job_id}-{}", uuid::Uuid::new_v4().simple()))?));
         } else if let Some(path) = v.strip_prefix("file:") {
             if !is_input_file(st, path) {
                 return Err("File reference outside the inputs folder.".into());
@@ -951,4 +970,19 @@ pub fn run() {
                 tauri::async_runtime::block_on(app.state::<AppState>().local.stop());
             }
         });
+}
+
+#[cfg(test)]
+mod media_tests {
+    use super::*;
+
+    #[test]
+    fn media_keys_cannot_carry_paths() {
+        for ok in ["image", "image_end", "audio", "audio_target", "video"] {
+            assert!(is_media_key(ok), "{ok}");
+        }
+        for bad in ["image_..", "image_../x", "audio_C:", "video_a/b", "image_A", "images", "prompt", "image_"] {
+            assert!(!is_media_key(bad), "{bad}");
+        }
+    }
 }
