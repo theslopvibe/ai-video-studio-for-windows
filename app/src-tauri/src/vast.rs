@@ -161,7 +161,9 @@ impl Vast {
             let c = self.worker_client(insecure).await?;
             let t0 = std::time::Instant::now();
             crate::log::info(&format!("worker generate → {endpoint} (request {request_id})"));
-            match c.post(&endpoint).bearer_auth(key).json(&body).send().await {
+            // the account key is only sent over a verified TLS connection; the insecure retry relies on the signed auth_data alone
+            let req = c.post(&endpoint).json(&body);
+            match (if insecure { req } else { req.bearer_auth(key) }).send().await {
                 Ok(r) => {
                     let code = r.status();
                     let text = r.text().await.map_err(err)?;

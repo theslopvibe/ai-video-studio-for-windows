@@ -121,6 +121,14 @@ fn reload_workflows(st: State<AppState>) -> (Vec<workflows::Workflow>, Vec<Strin
     st.load_workflows()
 }
 
+/// Only files inside the app's own `inputs` folder may be read or deleted through a `file:` job parameter.
+pub fn is_input_file(st: &AppState, path: &str) -> bool {
+    match (std::fs::canonicalize(path), std::fs::canonicalize(st.data_dir.join("inputs"))) {
+        (Ok(p), Ok(dir)) => p.starts_with(dir),
+        _ => false,
+    }
+}
+
 #[tauri::command]
 fn setting_set(st: State<AppState>, key: String, value: String) -> R<()> {
     if !SETTING_KEYS.contains(&key.as_str()) {
@@ -263,7 +271,9 @@ fn job_delete(st: State<AppState>, id: String, delete_file: bool) -> R<()> {
         // start/end images of this job live in the app data folder: remove them with the job
         if let Ok(Value::Object(p)) = serde_json::from_str::<Value>(&j.params) {
             for v in p.values().filter_map(|v| v.as_str()).filter_map(|s| s.strip_prefix("file:")) {
-                let _ = std::fs::remove_file(v);
+                if is_input_file(&st, v) {
+                    let _ = std::fs::remove_file(v);
+                }
             }
         }
         log::info(&format!("job {} deleted (file too: {delete_file})", id.chars().take(8).collect::<String>()));
@@ -647,7 +657,8 @@ fn export_settings(st: State<AppState>, path: String) -> R<()> {
 fn import_settings(st: State<AppState>, path: String) -> R<()> {
     let m: BTreeMap<String, String> = serde_json::from_str(&std::fs::read_to_string(path).map_err(e)?).map_err(e)?;
     for (k, v) in m {
-        if SETTING_KEYS.contains(&k.as_str()) && k != "out_dir" {
+        // paths and hosts are never imported: a shared settings file must not redirect an executable folder or the API-key host
+        if SETTING_KEYS.contains(&k.as_str()) && !["out_dir", "local_comfy_dir", "openai_base_url"].contains(&k.as_str()) {
             st.db.kv_set(&k, &v).map_err(e)?;
         }
     }

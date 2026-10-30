@@ -95,6 +95,9 @@ async fn run_job(app: &AppHandle, job: &Job, cancel: &Arc<AtomicBool>) -> Result
     for def in wf.meta.inputs.iter().filter(|i| i.ty == "image") {
         if let Some(path) = params.get(&def.key).and_then(|v| v.as_str()).and_then(|s| s.strip_prefix("file:")).map(String::from) {
             use base64::Engine;
+            if !crate::is_input_file(&st, &path) {
+                return Err("Image path is outside the app's inputs folder.".into());
+            }
             let bytes = tokio::fs::read(&path).await.map_err(|e| format!("Image not found ({path}): {e}"))?;
             params.insert(def.key.clone(), json!(base64::engine::general_purpose::STANDARD.encode(bytes)));
         }
