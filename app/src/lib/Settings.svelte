@@ -257,7 +257,7 @@
       ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
       : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>
     <div class="row">
-      <a class="btn" href="https://theslopvibe.com/free-apps/ai-video-studio-for-windows" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a>
+      <a class="btn" href="https://ko-fi.com/slopvibe" target="_blank" rel="noreferrer">☕ {S.lang === "el" ? "Κέρνα μας έναν καφέ" : "Buy us a coffee"}</a>
       <a class="btn ghost" href="https://theslopvibe.com/free-apps" target="_blank" rel="noreferrer">{S.lang === "el" ? "Περισσότερες δωρεάν εφαρμογές" : "More free apps"}</a>
       <a class="btn ghost" href="https://theslopvibe.com/contact" target="_blank" rel="noreferrer">{S.lang === "el" ? "Επικοινωνία" : "Hire us / contact"}</a>
     </div>
