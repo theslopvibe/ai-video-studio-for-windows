@@ -421,21 +421,24 @@ async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<S
 ---
 
 {input}");
-    let out_file = std::env::temp_dir().join(format!("avs-{}.txt", uuid::Uuid::new_v4().simple()));
+    // a fresh empty folder per call: the CLI sees no project files, settings or docs from a shared temp folder
+    let work = std::env::temp_dir().join(format!("avs-cli-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let out_file = work.join("answer.txt");
     let mut cmd = tokio::process::Command::new(exe);
     if tool == "codex" {
-        cmd.args(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-last-message"]).arg(&out_file);
+        cmd.args(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "-c", "project_doc_max_bytes=0", "--output-last-message"]).arg(&out_file);
         if !model.trim().is_empty() {
             cmd.args(["-m", model.trim()]);
         }
         cmd.arg("-");
     } else {
-        cmd.args(["-p", "Answer the request given on stdin."]);
+        cmd.args(["-p", "Answer the request given on stdin. Do not use any tools.", "--approval-mode", "default"]);
         if !model.trim().is_empty() {
             cmd.args(["-m", model.trim()]);
         }
     }
-    cmd.current_dir(std::env::temp_dir()).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    cmd.current_dir(&work).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = cmd.spawn().map_err(|e| format!("{tool}: {e}"))?;
@@ -444,7 +447,7 @@ async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<S
     drop(stdin);
     let out = tokio::time::timeout(Duration::from_secs(180), child.wait_with_output()).await.map_err(|_| format!("{tool}: timeout (180s)"))?.map_err(|e| e.to_string())?;
     let text = if tool == "codex" { std::fs::read_to_string(&out_file).unwrap_or_default() } else { String::from_utf8_lossy(&out.stdout).into_owned() };
-    let _ = std::fs::remove_file(&out_file);
+    let _ = std::fs::remove_dir_all(&work);
     let text = text.trim().to_string();
     if !out.status.success() || text.is_empty() {
         let err = String::from_utf8_lossy(&out.stderr);

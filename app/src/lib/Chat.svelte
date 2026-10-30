@@ -44,7 +44,10 @@
   }
   async function generate(key: string, c: Card) {
     if (!wfOf(c.workflow)) return S.notify(t("bad_model") + " " + c.workflow, true);
-    const j = await S.run(() => api.enqueue(S.projectId, c.workflow, c.prompt, c.params));
+    // the model's params are untrusted: keep only this workflow's own numeric/text inputs (no gpu, provider, images, seed)
+    const allowed = new Set(wfOf(c.workflow)!.meta.inputs.map((i) => i.key).filter((k) => !["prompt", "negative", "seed"].includes(k) && !k.startsWith("image")));
+    const params = Object.fromEntries(Object.entries(c.params).filter(([k, v]) => allowed.has(k) && (typeof v === "number" || typeof v === "string")));
+    const j = await S.run(() => api.enqueue(S.projectId, c.workflow, c.prompt, params));
     if (j) { S.upsert(j); done[key] = true; S.notify(t("queued_card")); }
   }
   function editInGenerate(c: Card) { S.draft = { prompt: c.prompt, workflow: c.workflow }; S.page = "generate"; }
