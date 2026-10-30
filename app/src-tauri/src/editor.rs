@@ -42,7 +42,7 @@ fn resolve(root: &Path, target: &str) -> Option<PathBuf> {
     let mut out = root.to_path_buf();
     for part in path.split('/').filter(|p| !p.is_empty()) {
         let part = percent_decode(part);
-        if part == ".." || part.contains(['\\', ':', '\0']) {
+        if part.is_empty() || part == ".." || part.contains(['/', '\\', ':', '\0']) {
             return None;
         }
         if part != "." {
@@ -52,7 +52,19 @@ fn resolve(root: &Path, target: &str) -> Option<PathBuf> {
     if out.is_dir() {
         out.push("index.html");
     }
-    out.is_file().then_some(out)
+    // last line of defence: the real path (symlinks resolved) must still be inside the folder
+    let (real, base) = (out.canonicalize().ok()?, root.canonicalize().ok()?);
+    (real.is_file() && real.starts_with(&base)).then_some(real)
+}
+
+/// Only requests addressed to this machine are served; a web page on another name (DNS rebinding) is refused.
+fn host_ok(head: &str) -> bool {
+    head.lines().any(|l| {
+        l.split_once(':').is_some_and(|(k, v)| {
+            let h = v.trim().to_ascii_lowercase();
+            k.trim().eq_ignore_ascii_case("host") && (h.starts_with("127.0.0.1:") || h.starts_with("localhost:") || h == "127.0.0.1" || h == "localhost")
+        })
+    })
 }
 
 fn percent_decode(s: &str) -> String {
@@ -79,7 +91,7 @@ async fn handle(mut sock: TcpStream, root: PathBuf) {
     let head = String::from_utf8_lossy(&buf[..n]).into_owned();
     let mut first = head.lines().next().unwrap_or("").split_whitespace();
     let (method, target) = (first.next().unwrap_or(""), first.next().unwrap_or("/"));
-    let (status, body, ctype) = match (method, resolve(&root, target)) {
+    let (status, body, ctype) = match (method, if host_ok(&head) { resolve(&root, target) } else { None }) {
         ("GET" | "HEAD", Some(p)) => match tokio::fs::read(&p).await {
             Ok(b) => ("200 OK", b, mime(&p)),
             Err(_) => ("500 Internal Server Error", b"read error".to_vec(), "text/plain"),
@@ -141,6 +153,11 @@ mod tests {
         assert!(resolve(&inner, "/%2e%2e/secret.txt").is_none());
         assert!(resolve(&inner, "/C:/Windows/win.ini").is_none());
         assert!(resolve(&d, "/projects/index.html?x=1").is_some());
+        assert!(resolve(&inner, "/..%2fsecret.txt").is_none());
+        assert!(resolve(&inner, "/%2e%2e%2fsecret.txt").is_none());
+        assert!(host_ok("GET / HTTP/1.1\r\nHost: 127.0.0.1:47616\r\n\r\n"));
+        assert!(host_ok("GET / HTTP/1.1\r\nHost: localhost:47616\r\n\r\n"));
+        assert!(!host_ok("GET / HTTP/1.1\r\nHost: evil.example:47616\r\n\r\n"));
         let _ = std::fs::remove_dir_all(&d);
     }
 }
