@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
+
+- Automatic updates: Settings > About > "Check for updates" downloads and installs signed new versions and keeps your data. Install this version by hand once; later versions update from inside the app.
 
 - The Claude Desktop connection switch now works immediately (no app restart). The extension gives clear step-by-step messages in Greek when the app is closed or the connection is off.
 
