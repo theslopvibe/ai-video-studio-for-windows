@@ -253,8 +253,17 @@
   </div>
 
   <div class="card">
+    <h2>{S.lang === "el" ? "Σύνδεση με Claude Desktop (προαιρετική)" : "Claude Desktop connection (optional)"}</h2>
+    <p class="small dim">{S.lang === "el"
+      ? "Απενεργοποιημένη από προεπιλογή: τίποτα δεν ακούει στον υπολογιστή σου. Αν την ανοίξεις, η εφαρμογή ακούει μόνο στο ίδιο PC με μυστικό κωδικό ώστε η επέκταση MCP του Claude Desktop να δίνει εντολές. Θέλει επανεκκίνηση της εφαρμογής."
+      : "Off by default: nothing listens on your computer. If you turn it on, the app listens on this PC only, behind a secret token, so the Claude Desktop MCP extension can send it commands. Needs an app restart."}</p>
+    <label class="row"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
+      {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με Claude Desktop" : "Allow the Claude Desktop connection"}</label>
+  </div>
+
+  <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.3.0" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.5.2" : ""}</p>
     <p>{S.lang === "el"
       ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
       : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>

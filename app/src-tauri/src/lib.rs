@@ -75,7 +75,7 @@ fn catalog(st: &AppState) -> Vec<Value> {
 
 const SETTING_KEYS: &[&str] = &[
     "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project",
-    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done",
+    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled",
 ];
 
 #[derive(Serialize)]
@@ -132,12 +132,28 @@ fn is_media_key(k: &str) -> bool {
     })
 }
 
+/// Only `X:\...` (plain or verbatim drive) passes: no UNC shares, device paths or relative paths.
+fn is_local_drive_path(p: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    let mut c = p.components();
+    match c.next() {
+        Some(Component::Prefix(x)) => match x.kind() {
+            Prefix::VerbatimDisk(_) => true,
+            Prefix::Disk(_) => matches!(c.next(), Some(Component::RootDir)),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 /// Copies a picture, sound or clip into the inputs folder and returns the `file:` reference jobs use.
 pub fn stash_input(st: &AppState, src: &Path, tag: &str) -> Result<String, String> {
-    // never reach for network shares or device paths (credential leak / hang): only real local files
-    let shown = src.to_string_lossy().replace('/', "\\");
-    if shown.starts_with("\\\\") && !shown.starts_with("\\\\?\\") {
-        return Err("Network and device paths are not allowed.".into());
+    // decided on the text alone, before any filesystem call
+    if !is_local_drive_path(src) {
+        return Err("Only files on a local drive (like C:\\...) are allowed; network and device paths are not.".into());
+    }
+    if std::fs::symlink_metadata(src).map_err(e)?.file_type().is_symlink() {
+        return Err("Links are not followed; pick the file itself.".into());
     }
     let real = std::fs::canonicalize(src).map_err(e)?;
     if real.to_string_lossy().starts_with("\\\\?\\UNC") {
@@ -735,7 +751,7 @@ fn import_settings(st: State<AppState>, path: String) -> R<()> {
     let m: BTreeMap<String, String> = serde_json::from_str(&std::fs::read_to_string(path).map_err(e)?).map_err(e)?;
     for (k, v) in m {
         // paths and hosts are never imported: a shared settings file must not redirect an executable folder or the API-key host
-        if SETTING_KEYS.contains(&k.as_str()) && !["out_dir", "local_comfy_dir", "openai_base_url"].contains(&k.as_str()) {
+        if SETTING_KEYS.contains(&k.as_str()) && !["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled"].contains(&k.as_str()) {
             st.db.kv_set(&k, &v).map_err(e)?;
         }
     }
@@ -939,7 +955,12 @@ pub fn run() {
             });
             let h = app.handle().clone();
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
-            tauri::async_runtime::spawn(api::serve(h.clone()));
+            // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
+            if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {
+                tauri::async_runtime::spawn(api::serve(h.clone()));
+            } else {
+                let _ = std::fs::remove_file(app.state::<AppState>().data_dir.join("api.json"));
+            }
             let mut editor_dir = h.path().resource_dir().map(|d| d.join("editor")).unwrap_or_default();
             if !editor_dir.exists() {
                 // `tauri dev` fallback
@@ -983,6 +1004,21 @@ mod media_tests {
         }
         for bad in ["image_..", "image_../x", "audio_C:", "video_a/b", "image_A", "images", "prompt", "image_"] {
             assert!(!is_media_key(bad), "{bad}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod stash_tests {
+    use super::*;
+
+    #[test]
+    fn only_local_drive_paths_pass() {
+        for ok in [r"C:\Users\a\x.png", r"\\?\C:\Users\a\x.png"] {
+            assert!(is_local_drive_path(Path::new(ok)), "{ok}");
+        }
+        for bad in [r"\\server\share\a.png", r"\\?\UNC\server\share\a.png", r"\\.\pipe\x.png", "//server/share/a.png", "relative.png", "C:rel.png", "/etc/x.png"] {
+            assert!(!is_local_drive_path(Path::new(bad)), "{bad}");
         }
     }
 }

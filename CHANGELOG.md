@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The local API for the Claude Desktop extension is now OFF by default (Settings > Claude Desktop connection). When off, nothing listens and no token file exists. File imports accept only local-drive paths (checked before touching the disk) and refuse links.
+
 - Security: media inputs no longer put caller-chosen keys into file names, and file imports refuse network and device paths.
 
 - Everything chains: "Make more from this…" in the Library turns any result into the next step (picture to video, video to smoother motion, voice to lip-sync). The Create page has two new tabs, Voice and Tools. Chat and the Claude Desktop extension can run the same chains (`job:<id>` references, `inputs`).
@@ -27,6 +29,8 @@
 - First version: Vast.ai Serverless with Wan 2.2, queue, library, projects, image to video, models from Hugging Face, logs and reports.
 
 ## Unreleased
+
+- The local API for the Claude Desktop extension is now OFF by default (Settings > Claude Desktop connection). When off, nothing listens and no token file exists. File imports accept only local-drive paths (checked before touching the disk) and refuse links.
 
 - Security: media inputs no longer put caller-chosen keys into file names, and file imports refuse network and device paths.
 - Create video with chat: studio chats queue videos from confirm cards; ChatGPT (Codex CLI) and Gemini (Gemini CLI) subscriptions; Z.ai GLM Coding Plan.
