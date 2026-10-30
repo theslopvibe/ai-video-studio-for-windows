@@ -15,3 +15,10 @@
 - **Editing tools.** Trim, join clips of a story, add music and captions.
 - **Polish.** Interface pass for a premium look, in-app updates, code signing, a website, more languages.
 - **Vast.ai image modes.** Images through the Vast worker (videos work today).
+
+## Next: editor, audio and redesign (requested 2026-10-30)
+1. **Audio / music / sound-effects generator.** Local first through the existing ComfyUI install (Stable Audio Open, ACE-Step for music, MMAudio for video-to-sound), same workflow-JSON and model-pack mechanism as video. Hosted modes as paid options with `license: paid`, `good_for`, `est_usd`.
+2. **Video editor connected to the library.** (a) built-in simple editor (trim, order clips, text, music track, export with ffmpeg), (b) "Open in Shotcut / Kdenlive / OpenShot" for full editing, passing the project's clips. GPL tools are launched, not bundled.
+3. **UI redesign.** More practical and more beautiful: one workspace (Create / Library / Edit / Audio), model picker with Open source vs Paid and "good for" tips, per-project timeline, more options per mode.
+4. **Ten languages.** The 10 most spoken (total speakers): English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, Urdu. Greek stays as a bonus. Needs right-to-left layout for Arabic and Urdu, a language picker, and the strings split out of the components (today only EN/EL, in `i18n.ts`, `chatStrings.ts`, `guide.ts`, `wizard.ts`, workflow `name_*`/`desc_*`).
+5. **Donate service.** Create the account (Ko-fi, Buy Me a Coffee or GitHub Sponsors), then set `donate.url` in `slopvibe-site/data/site.json`. The app already links to the site page.
