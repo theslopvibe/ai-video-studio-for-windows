@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Image editor (miniPaint, MIT) next to the video editor, with an AI menu: generate an image into a layer.
+
 - Setup wizard: hardware scan, one-click local ComfyUI install, models that fit your graphics card, first video.
 - Local generation on NVIDIA (AMD and Intel experimental), with resumable downloads that survive a stalled connection.
 - Hosted providers: fal.ai and Replicate (pay per result, no GPU). Models are editable JSON files.

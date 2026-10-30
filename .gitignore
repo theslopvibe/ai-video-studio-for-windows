@@ -18,3 +18,4 @@ PLAN.md
 
 # built editor (python editor/build.py)
 app/src-tauri/editor-dist/
+app/src-tauri/paint-dist/

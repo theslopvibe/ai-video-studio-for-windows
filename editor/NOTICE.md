@@ -13,3 +13,9 @@ What `opencut.patch` changes (and nothing else):
 
 Build it with `python editor/build.py` (pinned commit is in that file). Newer upstream versions are welcome:
 change the commit, re-create the patch, and test.
+
+## Image editor: miniPaint
+
+The **Image** tab of the Editor page is [miniPaint](https://github.com/viliusle/miniPaint) by ViliusL and contributors,
+released under the **MIT License** (copy in the app at `paint/LICENSE.txt`). It is not our work. `editor/build_paint.py`
+builds it at a pinned commit and only adds `editor/paint/ai.js` and an "AI" menu entry.

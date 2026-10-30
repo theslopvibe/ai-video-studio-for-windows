@@ -737,6 +737,34 @@ fn editor_url() -> Option<String> {
     editor::url()
 }
 
+#[tauri::command]
+fn paint_url() -> Option<String> {
+    editor::paint_url()
+}
+
+/// Reads a finished job's picture for the image editor as a data URL (only files inside the output or data folders).
+#[tauri::command]
+fn image_data_url(st: State<AppState>, path: String) -> R<String> {
+    use base64::Engine;
+    let real = std::fs::canonicalize(&path).map_err(e)?;
+    let ok = [st.videos_dir.clone(), st.data_dir.clone()].iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| real.starts_with(d))
+        || st.db.projects().map_err(e)?.iter().filter_map(|p| std::fs::canonicalize(&p.folder).ok()).any(|d| real.starts_with(d));
+    if !ok {
+        return Err("That file is outside the app folders".into());
+    }
+    let mime = match real.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return Err("Not a picture".into()),
+    };
+    let bytes = std::fs::read(&real).map_err(e)?;
+    if bytes.len() > 40 << 20 {
+        return Err("Picture is too large".into());
+    }
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 // ---- local generation (setup wizard)
 
 #[tauri::command]
@@ -842,6 +870,11 @@ pub fn run() {
                 editor_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("editor-dist");
             }
             tauri::async_runtime::spawn(editor::serve(editor_dir));
+            let mut paint_dir = h.path().resource_dir().map(|d| d.join("paint")).unwrap_or_default();
+            if !paint_dir.exists() {
+                paint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("paint-dist");
+            }
+            tauri::async_runtime::spawn(editor::serve_paint(paint_dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -852,7 +885,7 @@ pub fn run() {
             gpu_offers, apply_gpus, install_on_workers, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
-            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url
+            chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

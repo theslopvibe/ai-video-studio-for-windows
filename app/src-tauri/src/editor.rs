@@ -7,10 +7,16 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 const PORT: u16 = 47616;
+const PAINT_PORT: u16 = 47617;
 static URL: OnceLock<String> = OnceLock::new();
+static PAINT_URL: OnceLock<String> = OnceLock::new();
 
 pub fn url() -> Option<String> {
     URL.get().cloned()
+}
+
+pub fn paint_url() -> Option<String> {
+    PAINT_URL.get().cloned()
 }
 
 fn mime(p: &Path) -> &'static str {
@@ -108,27 +114,37 @@ async fn handle(mut sock: TcpStream, root: PathBuf) {
     let _ = sock.shutdown().await;
 }
 
+/// Video editor (OpenCut) on 47616.
 pub async fn serve(root: PathBuf) {
-    if !root.join("projects").join("index.html").is_file() {
-        crate::log::error(&format!("editor: files not found in {}", root.display()));
+    serve_on(root, PORT, "projects/index.html", &URL, "editor").await
+}
+
+/// Image editor (miniPaint) on 47617, same rules.
+pub async fn serve_paint(root: PathBuf) {
+    serve_on(root, PAINT_PORT, "index.html", &PAINT_URL, "image editor").await
+}
+
+async fn serve_on(root: PathBuf, want: u16, probe: &str, slot: &'static OnceLock<String>, what: &str) {
+    if !root.join(probe).is_file() {
+        crate::log::error(&format!("{what}: files not found in {}", root.display()));
         return;
     }
-    let listener = match TcpListener::bind(("127.0.0.1", PORT)).await {
+    let listener = match TcpListener::bind(("127.0.0.1", want)).await {
         Ok(l) => l,
         Err(_) => match TcpListener::bind(("127.0.0.1", 0)).await {
             Ok(l) => {
-                crate::log::warn("editor: port 47616 is busy, using another one (editor projects will not carry over)");
+                crate::log::warn(&format!("{what}: port {want} is busy, using another one (its saved work will not carry over)"));
                 l
             }
             Err(x) => {
-                crate::log::error(&format!("editor: bind failed: {x}"));
+                crate::log::error(&format!("{what}: bind failed: {x}"));
                 return;
             }
         },
     };
-    let port = listener.local_addr().map(|a| a.port()).unwrap_or(PORT);
-    let _ = URL.set(format!("http://127.0.0.1:{port}"));
-    crate::log::info(&format!("editor: serving {} on 127.0.0.1:{port}", root.display()));
+    let port = listener.local_addr().map(|a| a.port()).unwrap_or(want);
+    let _ = slot.set(format!("http://127.0.0.1:{port}"));
+    crate::log::info(&format!("{what}: serving {} on 127.0.0.1:{port}", root.display()));
     loop {
         let Ok((sock, _)) = listener.accept().await else { continue };
         tauri::async_runtime::spawn(handle(sock, root.clone()));
