@@ -8,7 +8,8 @@ const API: &str = "https://huggingface.co/api/models";
 pub const DIRS: &[&str] = &[
     "diffusion_models", "checkpoints", "vae", "text_encoders", "loras", "clip_vision", "controlnet", "upscale_models", "unet",
 ];
-const WEIGHT_EXT: &[&str] = &[".safetensors", ".gguf", ".ckpt", ".pt", ".pth"];
+// pickle formats (.ckpt/.pt/.pth) can run code when loaded, so user-imported packs only take these two
+const WEIGHT_EXT: &[&str] = &[".safetensors", ".gguf"];
 
 #[derive(Serialize)]
 pub struct Hit {

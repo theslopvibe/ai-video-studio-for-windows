@@ -459,6 +459,11 @@ async fn run_cli(tool: &str, system: &str, input: &str, model: &str) -> Result<S
 
 /// Instructions for "Create video with chat". The catalogue is inlined so the model needs no tool calls and
 /// the same text works for APIs and subscription CLIs.
+/// Imported workflow files are untrusted: one short line, no control characters, so they cannot add instructions.
+fn plain(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).take(160).collect()
+}
+
 pub fn studio_system(st: &AppState) -> String {
     let (wfs, _) = st.load_workflows();
     let mut cat = String::new();
@@ -469,7 +474,7 @@ pub fn studio_system(st: &AppState) -> String {
         let langs = if m.languages.is_empty() { String::new() } else { format!(" | languages: {}", m.languages.join(", ")) };
         let cost = if m.provider.is_empty() { format!("open source, ~{}s on a GPU", m.est_sec) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
         cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {} | inputs: {}{}
-", m.id, m.name_en, m.kind, cost, m.good_en, keys.join(","), if needs.is_empty() { "none".into() } else { needs.join(",") }, langs));
+", plain(&m.id), plain(&m.name_en), plain(&m.kind), cost, plain(&m.good_en), plain(&keys.join(",")), if needs.is_empty() { "none".into() } else { plain(&needs.join(",")) }, plain(&langs)));
     }
     format!(
         "You are the assistant inside AI Video Studio, an app that makes videos and images from prompts. Reply in the user's language, briefly. Ask at most one short question and only if essential. Recommend a model for the task (one line: why, speed, price). Write the prompt in English: subject, one action, setting, light, camera, style, one continuous shot.

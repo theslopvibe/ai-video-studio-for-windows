@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Step-by-step Greek guide for using Vast and the Claude Desktop extension: mcp/GUIDE.el.html.
+
+- Security hardening after an independent audit: no TLS fallback to workers, local API checks Host and compares the token in constant time (unauthenticated callers get an empty 404), file paths for images go through the same checks as other imports, editor bridge checks the origin, content security policy and a narrow asset scope for the window, node packs pinned to exact commits, imported model packs accept only .safetensors and .gguf, imported workflows cannot replace built-in modes.
+
 - The local API for the Claude Desktop extension is now OFF by default (Settings > Claude Desktop connection). When off, nothing listens and no token file exists. File imports accept only local-drive paths (checked before touching the disk) and refuse links.
 
 - Security: media inputs no longer put caller-chosen keys into file names, and file imports refuse network and device paths.
@@ -29,6 +33,8 @@
 - First version: Vast.ai Serverless with Wan 2.2, queue, library, projects, image to video, models from Hugging Face, logs and reports.
 
 ## Unreleased
+
+- Security hardening after an independent audit: no TLS fallback to workers, local API checks Host and compares the token in constant time (unauthenticated callers get an empty 404), file paths for images go through the same checks as other imports, editor bridge checks the origin, content security policy and a narrow asset scope for the window, node packs pinned to exact commits, imported model packs accept only .safetensors and .gguf, imported workflows cannot replace built-in modes.
 
 - The local API for the Claude Desktop extension is now OFF by default (Settings > Claude Desktop connection). When off, nothing listens and no token file exists. File imports accept only local-drive paths (checked before touching the disk) and refuse links.
 

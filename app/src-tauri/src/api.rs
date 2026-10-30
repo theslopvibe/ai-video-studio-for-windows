@@ -51,7 +51,24 @@ struct Req {
     path: String,
     query: String,
     auth: String,
+    host_ok: bool,
     body: Vec<u8>,
+}
+
+/// Compares without stopping at the first differing byte.
+fn same_secret(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut diff = (a.len() ^ b.len()) as u8;
+    for i in 0..a.len().max(b.len()) {
+        diff |= a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0);
+    }
+    diff == 0
+}
+
+/// Only requests addressed to this machine (blocks DNS rebinding from a web page).
+fn local_host(v: &str) -> bool {
+    let h = v.trim().to_ascii_lowercase();
+    h == "127.0.0.1" || h == "localhost" || h.starts_with("127.0.0.1:") || h.starts_with("localhost:")
 }
 
 async fn read_req(sock: &mut TcpStream) -> Option<Req> {
@@ -77,11 +94,13 @@ async fn read_req(sock: &mut TcpStream) -> Option<Req> {
     let target = first.next()?.to_string();
     let (path, query) = target.split_once('?').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((target, String::new()));
     let mut auth = String::new();
+    let mut host_ok = false;
     let mut len = 0usize;
     for l in lines {
         if let Some((k, v)) = l.split_once(':') {
             match k.trim().to_ascii_lowercase().as_str() {
                 "authorization" => auth = v.trim().to_string(),
+                "host" => host_ok = local_host(v),
                 "content-length" => len = v.trim().parse().unwrap_or(0),
                 _ => {}
             }
@@ -99,14 +118,19 @@ async fn read_req(sock: &mut TcpStream) -> Option<Req> {
         body.extend_from_slice(&tmp[..n]);
     }
     body.truncate(len);
-    Some(Req { method, path, query, auth, body })
+    Some(Req { method, path, query, auth, host_ok, body })
 }
 
 async fn handle(mut sock: TcpStream, app: AppHandle, token: String) {
     let Some(req) = read_req(&mut sock).await else { return };
-    let (code, body) = if req.auth.strip_prefix("Bearer ").map(|t| t.trim()) != Some(token.as_str()) {
-        (401, json!({ "error": "Invalid token" }))
-    } else {
+    // wrong host or token: an empty 404, nothing that identifies the app
+    let authed = req.host_ok && req.auth.strip_prefix("Bearer ").is_some_and(|t| same_secret(t.trim(), &token));
+    if !authed {
+        let _ = sock.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+        let _ = sock.shutdown().await;
+        return;
+    }
+    let (code, body) = {
         match route(&app, &req).await {
             Ok(v) => (200, v),
             Err(m) => (400, json!({ "error": m })),
@@ -199,15 +223,6 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
     }
 }
 
-fn read_image(path: &str) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = std::fs::read(path).map_err(|x| format!("Cannot read the image \"{path}\": {x}"))?;
-    if bytes.len() > 12 * 1024 * 1024 {
-        return Err(format!("The image \"{path}\" is too large (over 12 MB). Make it smaller."));
-    }
-    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
-}
-
 async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, String> {
     let prompt = b["prompt"].as_str().unwrap_or("").trim().to_string();
     if prompt.is_empty() {
@@ -229,14 +244,14 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
     }
     let has_start = match b["image_path"].as_str().filter(|p| !p.is_empty()) {
         Some(p) => {
-            params.insert("image".into(), json!(read_image(p)?));
+            params.insert("image".into(), json!(crate::stash_input(st, std::path::Path::new(p), &uuid::Uuid::new_v4().simple().to_string())?));
             true
         }
         None => false,
     };
     let has_end = match b["end_image_path"].as_str().filter(|p| !p.is_empty()) {
         Some(p) => {
-            params.insert("image_end".into(), json!(read_image(p)?));
+            params.insert("image_end".into(), json!(crate::stash_input(st, std::path::Path::new(p), &uuid::Uuid::new_v4().simple().to_string())?));
             true
         }
         None => false,

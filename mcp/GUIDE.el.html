@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Οδηγίες: Claude + Vast + AI Video Studio</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; font-size: 20px; line-height: 1.55; max-width: 860px; margin: 0 auto; padding: 24px; color: #1c1c1c; background: #fffdf8; }
+  h1 { font-size: 34px; margin-bottom: 4px; }
+  h2 { font-size: 26px; margin-top: 44px; padding: 10px 14px; background: #1c1c1c; color: #fff; border-radius: 8px; }
+  .step { display: flex; gap: 14px; margin: 18px 0; align-items: flex-start; }
+  .num { flex: none; width: 44px; height: 44px; border-radius: 50%; background: #e8a317; color: #1c1c1c; font-weight: 700; font-size: 24px; display: grid; place-items: center; }
+  .box { background: #fff; border: 2px solid #ddd; border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
+  .warn { border-color: #d9534f; background: #fff3f2; }
+  .ok { border-color: #3a9d5d; background: #f0fbf3; }
+  code, .kbd { background: #eee; padding: 2px 8px; border-radius: 5px; font-family: Consolas, monospace; font-size: 18px; }
+  .say { background: #eef4ff; border-left: 6px solid #3b6fd8; padding: 10px 14px; margin: 10px 0; border-radius: 6px; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; font-size: 18px; }
+  td, th { border: 1px solid #ccc; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; }
+  .small { font-size: 16px; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>Claude + Vast + AI Video Studio</h1>
+<p class="small">Οδηγίες βήμα-βήμα. Δεν χρειάζεται καμία τεχνική γνώση. Κάνε ένα βήμα τη φορά και μην προχωράς αν το προηγούμενο δεν πέτυχε.</p>
+
+<div class="box">
+  <b>Τι κάνουμε εδώ:</b> μιλάς στο <b>Claude</b> (στο Claude Desktop), και το Claude φτιάχνει video, εικόνες και φωνές με ανοιχτά μοντέλα, τρέχοντάς τα σε <b>ενοικιαζόμενη κάρτα γραφικών στο Vast.ai</b>. Τα δικά σου skills και εργαλεία στο Claude συνεχίζουν να δουλεύουν όπως πριν.<br>
+  <b>Σημαντικό:</b> το πρόγραμμα «AI Video Studio» πρέπει να είναι εγκατεστημένο και <b>ανοιχτό</b> όσο δουλεύεις. Είναι η «μηχανή». Δεν χρειάζεται να το χρησιμοποιείς, απλώς άφησέ το ανοιχτό (μπορείς να το ελαχιστοποιήσεις).
+</div>
+
+<div class="box">
+  <b>Τι χρειάζεσαι πριν ξεκινήσεις:</b>
+  <ol>
+    <li>Υπολογιστή με Windows 10 ή 11 και internet.</li>
+    <li>Το <b>Claude Desktop</b> εγκατεστημένο και συνδεδεμένο στον λογαριασμό σου.</li>
+    <li>Λογαριασμό στο <b>Vast.ai</b> (cloud.vast.ai) με λίγα χρήματα μέσα (π.χ. 10 $). Κάθε video κοστίζει περίπου 5 έως 50 σεντς.</li>
+    <li>Τα 2 αρχεία από αυτόν τον φάκελο: <code>AI Video Studio For Windows ... setup.exe</code> και <code>ai-video-studio.mcpb</code>.</li>
+  </ol>
+</div>
+
+<h2>ΜΕΡΟΣ 1 — Εγκατάσταση του προγράμματος (5 λεπτά)</h2>
+
+<div class="step"><div class="num">1</div><div>Κάνε <b>διπλό κλικ</b> στο αρχείο που τελειώνει σε <code>setup.exe</code>.<br>
+Αν βγει μπλε παράθυρο «Η Windows προστάτευσε τον υπολογιστή σας»: πάτα <b>«Περισσότερες πληροφορίες»</b> και μετά <b>«Εκτέλεση ούτως ή άλλως»</b>. (Είναι φυσιολογικό, το πρόγραμμα δεν έχει πληρώσει για ψηφιακή υπογραφή.)</div></div>
+
+<div class="step"><div class="num">2</div><div>Πάτα <b>Next / Επόμενο</b> μέχρι να τελειώσει και μετά <b>Finish</b>. Το πρόγραμμα ανοίγει.</div></div>
+
+<div class="step"><div class="num">3</div><div>Αν ανοίξει ένα παράθυρο «καλωσορίσματος» (wizard) που ζητά να κατεβάσει μοντέλα στον υπολογιστή σου: <b>κλείστε το / παραλείψτε το</b>. Εμείς θα τρέχουμε στο Vast, όχι στον δικό σου υπολογιστή.</div></div>
+
+<h2>ΜΕΡΟΣ 2 — Σύνδεση με το Vast (10 λεπτά)</h2>
+
+<div class="step"><div class="num">1</div><div>Στον browser πήγαινε στο <b>cloud.vast.ai</b> και συνδέσου. Πάτα <b>Account</b> (Λογαριασμός) στο μενού αριστερά και μετά <b>API Keys</b>. Πάτα <b>Create API Key</b> και <b>αντίγραψε</b> τον μεγάλο κωδικό που θα εμφανιστεί (είναι σαν κωδικός πρόσβασης: δεν τον δίνεις σε κανέναν).</div></div>
+
+<div class="step"><div class="num">2</div><div>Στο πρόγραμμα AI Video Studio πάτα <b>Settings (Ρυθμίσεις)</b> αριστερά. Βρες το πεδίο <b>«Vast.ai API key»</b>, κάνε <b>επικόλληση</b> (Ctrl+V) και πάτα <b>Save (Αποθήκευση)</b>. Δίπλα πρέπει να γράψει πράσινο <b>«set»</b>.</div></div>
+
+<div class="step"><div class="num">3</div><div>Πάτα το κουμπί <b>«Test connection» (Έλεγχος σύνδεσης)</b>. Αν γράψει ότι δεν βρέθηκε endpoint, πάτα το κουμπί που εμφανίζεται: <b>«Create the endpoint automatically» (Δημιούργησε το endpoint αυτόματα)</b>. Περίμενε 1-2 λεπτά.<br>
+<span class="small">Το Vast μπορεί να ξεκινήσει για λίγα λεπτά μια δοκιμαστική κάρτα, που κοστίζει λίγα σεντς. Είναι φυσιολογικό.</span></div></div>
+
+<div class="step"><div class="num">4</div><div>Στο ίδιο παράθυρο Ρυθμίσεων βρες το <b>«Default place to run» (Προεπιλεγμένη εκτέλεση)</b> και διάλεξε <b>«Cloud GPU»</b>.</div></div>
+
+<div class="step"><div class="num">5</div><div>Πήγαινε στη σελίδα <b>Models (Μοντέλα)</b> (μέσα στις Ρυθμίσεις, καρτέλα «Models»). Τσέκαρε τα μοντέλα που θες να έχεις στο Vast:
+  <ul>
+    <li><b>Wan 2.2</b>: είναι ήδη έτοιμο στο Vast, δεν χρειάζεται εγκατάσταση.</li>
+    <li><b>LTX-Video</b>: πιο γρήγορο και φθηνότερο.</li>
+    <li>Για φωνή, εργαλεία εικόνας κλπ. διάλεξε ό,τι εμφανίζεται στη λίστα και σε ενδιαφέρει.</li>
+  </ul>
+  Μετά πάτα <b>«Install on workers» (Εγκατάσταση στους workers)</b> και περίμενε να γράψει ότι τελείωσε. Αυτό χρειάζεται <b>μία φορά</b> για κάθε νέο μοντέλο.</div></div>
+
+<h2>ΜΕΡΟΣ 3 — Σύνδεση του προγράμματος με το Claude Desktop (5 λεπτά)</h2>
+
+<div class="step"><div class="num">1</div><div>Στο πρόγραμμα AI Video Studio, μέσα στις <b>Settings</b>, κατέβα κάτω στο κουτί <b>«Claude Desktop connection (optional)»</b> και <b>τσέκαρε</b> το <b>«Allow the Claude Desktop connection»</b> (Να επιτρέπεται η σύνδεση).</div></div>
+
+<div class="step"><div class="num">2</div><div><b>Κλείσε εντελώς το πρόγραμμα</b> (το Χ πάνω δεξιά, και αν υπάρχει εικονίδιο κάτω δίπλα στο ρολόι, δεξί κλικ → Quit) και <b>άνοιξέ το ξανά</b>. Η σύνδεση ενεργοποιείται μόνο μετά από επανεκκίνηση.</div></div>
+
+<div class="step"><div class="num">3</div><div>Άνοιξε το <b>Claude Desktop</b>. Πάτα το όνομά σου κάτω αριστερά → <b>Settings</b> → <b>Extensions</b> (Επεκτάσεις).<br>
+<b>Σύρε</b> το αρχείο <code>ai-video-studio.mcpb</code> μέσα στο παράθυρο του Claude Desktop (ή διπλό κλικ πάνω του). Αν δεν δουλεύει το σύρσιμο, ψάξε το κουμπί <b>«Advanced settings» → «Install Extension…»</b> και διάλεξε το αρχείο.</div></div>
+
+<div class="step"><div class="num">4</div><div>Θα βγει ένα παράθυρο που σου δείχνει τι κάνει η επέκταση. Πάτα <b>Install (Εγκατάσταση)</b>. Βεβαιώσου ότι ο διακόπτης της επέκτασης είναι <b>ενεργός</b> (μπλε/ανοιχτός).</div></div>
+
+<div class="step"><div class="num">5</div><div><b>Δοκιμή.</b> Άνοιξε μια νέα συζήτηση στο Claude και γράψε:
+<div class="say">Έλεγξε την κατάσταση του video studio.</div>
+Αν το Claude απαντήσει με τις ρυθμίσεις (π.χ. ότι είναι στο Cloud GPU), όλα δουλεύουν. 🎉</div></div>
+
+<h2>ΜΕΡΟΣ 4 — Πώς το χρησιμοποιείς κάθε μέρα</h2>
+
+<p>Μιλάς στο Claude <b>όπως θα μιλούσες σε άνθρωπο</b>. Παραδείγματα:</p>
+<div class="say">Φτιάξε ένα video 5 δευτερολέπτων: ένα κόκκινο αμάξι που τρέχει σε παραλιακό δρόμο το ηλιοβασίλεμα. Τρέξ' το στο Vast με LTX.</div>
+<div class="say">Φτιάξε μια εικόνα ενός φάρου μέσα στην καταιγίδα, και μετά κάν' την video.</div>
+<div class="say">Φτιάξε μια φωνή που διαβάζει αυτό το κείμενο στα ελληνικά: «Καλώς ήρθατε στο κατάστημά μας».</div>
+<div class="say">Ποια μοντέλα έχω διαθέσιμα και τι κάνει το καθένα;</div>
+
+<div class="box ok">
+  <b>Πάντα ρωτάει πρώτα.</b> Πριν ξοδέψει χρήματα, το Claude σου λέει το μοντέλο, τη διάρκεια και το κόστος περίπου, και περιμένει να πεις «ναι». Χωρίς δικό σου «ναι» δεν ξεκινάει τίποτα.
+</div>
+
+<div class="box">
+  <b>Πόσο περιμένεις:</b> από 1 έως 15 λεπτά για κάθε video (η πρώτη φορά της ημέρας είναι πιο αργή, γιατί «ξυπνάει» η ενοικιαζόμενη κάρτα). Το Claude σε ενημερώνει όταν τελειώσει και σου λέει πού αποθηκεύτηκε το αρχείο. Τα αρχεία μπαίνουν στον φάκελο <b>Βίντεο → AI Video Studio</b> του υπολογιστή σου.
+</div>
+
+<div class="box">
+  <b>Τα δικά σου skills:</b> μετά που φτιαχτεί το video, μπορείς να πεις στο Claude να το δώσει στα δικά σου skills/εργαλεία (μοντάζ, ιστορίες κλπ.) όπως κάνεις και με κάθε άλλο αρχείο.
+</div>
+
+<h2>Αν κάτι δεν δουλέψει</h2>
+
+<table>
+<tr><th>Τι βλέπεις</th><th>Τι κάνεις</th></tr>
+<tr><td>Το Claude λέει «δεν τρέχει το AI Video Studio»</td><td>Άνοιξε το πρόγραμμα AI Video Studio και άφησέ το ανοιχτό. Ξαναδοκίμασε.</td></tr>
+<tr><td>Λέει ότι δεν έχει τρέξει ποτέ σε αυτόν τον υπολογιστή</td><td>Άνοιξε το πρόγραμμα μία φορά και κάνε το <b>Μέρος 3, βήμα 1-2</b> (τσεκάρισμα σύνδεσης και επανεκκίνηση του προγράμματος).</td></tr>
+<tr><td>Τσεκάρισες τη σύνδεση αλλά δεν δουλεύει</td><td>Κλείσε εντελώς το πρόγραμμα και ξανάνοιξέ το. Μετά κλείσε και ξανάνοιξε και το Claude Desktop.</td></tr>
+<tr><td>«Missing Vast API key» ή «Δεν βρέθηκε το endpoint»</td><td>Κάνε ξανά το <b>Μέρος 2</b>, βήματα 2 και 3.</td></tr>
+<tr><td>Το video αποτυγχάνει με σφάλμα για μοντέλο ή node</td><td>Πήγαινε Models και πάτα ξανά <b>«Install on workers»</b> για αυτό το μοντέλο. Αν συνεχίσει, δες παρακάτω.</td></tr>
+<tr><td>Τίποτα από τα παραπάνω</td><td>Στο πρόγραμμα: <b>Settings → Logs → «Create report to send» (Φτιάξε αναφορά)</b>. Θα ανοίξει ένας φάκελος με ένα αρχείο. <b>Στείλε αυτό το αρχείο στον Γιώργο.</b> Δεν περιέχει κωδικούς.</td></tr>
+</table>
+
+<div class="box warn">
+  <b>Να ξέρεις:</b> η εκτέλεση των ανοιχτών μοντέλων στο Vast μέσα από αυτό το πρόγραμμα είναι <b>καινούργια και δεν έχει δοκιμαστεί σε πολλούς λογαριασμούς</b>. Μπορεί την πρώτη φορά να χρειαστεί μια μικρή διόρθωση. Αν δεις σφάλμα, δεν έκανες κάτι λάθος: στείλε την αναφορά (τελευταίο βήμα στον πίνακα) και θα διορθωθεί.<br>
+  <b>Κόστος:</b> το Vast χρεώνει μόνο όσο τρέχει η κάρτα. Όταν δεν φτιάχνεις video, δεν πληρώνεις (το endpoint κατεβαίνει στο μηδέν). Μπορείς πάντα να δεις τα έξοδά σου στο cloud.vast.ai → Billing.
+</div>
+
+<div class="box">
+  <b>Ασφάλεια:</b> ο κωδικός Vast αποθηκεύεται μόνο στον δικό σου υπολογιστή (στο Windows Credential Manager) και ποτέ δεν φεύγει από αυτόν προς κανέναν άλλον εκτός του Vast. Μην τον στέλνεις σε μηνύματα ή email. Αν θέλεις να τον ακυρώσεις: cloud.vast.ai → Account → API Keys → διαγραφή.
+</div>
+
+</body>
+</html>

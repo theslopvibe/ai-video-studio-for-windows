@@ -249,6 +249,11 @@ pub fn load_all(bundled: &Path, user: &Path) -> (Vec<Workflow>, Vec<String>) {
             if p.extension().map(|e| e.eq_ignore_ascii_case("json")).unwrap_or(false) {
                 match parse_file(&p, src) {
                     Ok(w) => {
+                        // a shared file must not silently replace one of the app's own modes
+                        if src == "user" && out.iter().any(|x| x.source == "bundled" && x.meta.id == w.meta.id) {
+                            errs.push(format!("{}: the id \"{}\" belongs to a built-in mode; change \"id\" in the file", p.display(), w.meta.id));
+                            continue;
+                        }
                         out.retain(|x| x.meta.id != w.meta.id);
                         out.push(w);
                     }

@@ -19,7 +19,7 @@
         if (!url || !paintUrl) { tries++; await new Promise((r) => setTimeout(r, 300)); }
       }
     })();
-    const on = (ev: MessageEvent) => { if (paintFrame && ev.source === paintFrame.contentWindow) void handleAi(ev.data); };
+    const on = (ev: MessageEvent) => { if (paintFrame && paintUrl && ev.source === paintFrame.contentWindow && ev.origin === new URL(paintUrl).origin) void handleAi(ev.data); };
     window.addEventListener("message", on);
     return () => window.removeEventListener("message", on);
   });
@@ -27,7 +27,7 @@
   // Image editor → app: the AI menu inside the editor asks for a picture, we run a job and answer with the file.
   async function handleAi(msg: { avs?: string; id: string; op: string; prompt?: string; width?: number; height?: number; image?: string }) {
     if (msg?.avs !== "ai") return;
-    const reply = (r: { image?: string; error?: string }) => paintFrame?.contentWindow?.postMessage({ avs: "ai-result", id: msg.id, ...r }, "*");
+    const reply = (r: { image?: string; error?: string }) => paintUrl && paintFrame?.contentWindow?.postMessage({ avs: "ai-result", id: msg.id, ...r }, new URL(paintUrl).origin);
     try {
       // each menu entry is just a workflow: new tools only need a workflow file
       const TOOL: Record<string, string> = { upscale: "upscale-realesrgan", remove_background: "rmbg-birefnet", edit: "qwen-image-edit" };

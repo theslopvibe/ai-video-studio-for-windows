@@ -52,6 +52,16 @@ impl AppState {
         }
         Ok(v)
     }
+    /// The webview may read pictures/clips only from the folders the app itself works in (output, projects, app data).
+    pub fn sync_asset_scope(&self, app: &AppHandle) {
+        let scope = app.asset_protocol_scope();
+        let mut dirs = vec![self.output_dir(), self.data_dir.clone(), self.videos_dir.clone()];
+        dirs.extend(self.projects().unwrap_or_default().into_iter().map(|p| PathBuf::from(p.dir)));
+        for d in dirs {
+            let _ = std::fs::create_dir_all(&d);
+            let _ = scope.allow_directory(&d, true);
+        }
+    }
     pub fn output_dir(&self) -> PathBuf {
         match self.db.kv_get("out_dir") {
             Some(d) if !d.trim().is_empty() => PathBuf::from(d),
@@ -219,11 +229,15 @@ pub fn is_input_file(st: &AppState, path: &str) -> bool {
 }
 
 #[tauri::command]
-fn setting_set(st: State<AppState>, key: String, value: String) -> R<()> {
+fn setting_set(st: State<AppState>, app: AppHandle, key: String, value: String) -> R<()> {
     if !SETTING_KEYS.contains(&key.as_str()) {
         return Err(format!("unknown setting {key}"));
     }
-    st.db.kv_set(&key, &value).map_err(e)
+    st.db.kv_set(&key, &value).map_err(e)?;
+    if key == "out_dir" {
+        st.sync_asset_scope(&app);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -235,7 +249,7 @@ fn secret_set(name: String, value: String) -> R<BTreeMap<String, bool>> {
 // ---- projects
 
 #[tauri::command]
-fn project_create(st: State<AppState>, name: String, folder: String) -> R<Vec<Project>> {
+fn project_create(st: State<AppState>, app: AppHandle, name: String, folder: String) -> R<Vec<Project>> {
     if name.trim().is_empty() {
         return Err("The name is empty".into());
     }
@@ -243,11 +257,12 @@ fn project_create(st: State<AppState>, name: String, folder: String) -> R<Vec<Pr
         std::fs::create_dir_all(folder.trim()).map_err(|x| format!("The folder cannot be created: {x}"))?;
     }
     st.db.create_project(&name, &folder).map_err(e)?;
+    st.sync_asset_scope(&app);
     st.projects()
 }
 
 #[tauri::command]
-fn project_update(st: State<AppState>, id: String, name: String, folder: String, suffix: String, sidecar: bool) -> R<Vec<Project>> {
+fn project_update(st: State<AppState>, app: AppHandle, id: String, name: String, folder: String, suffix: String, sidecar: bool) -> R<Vec<Project>> {
     if name.trim().is_empty() {
         return Err("The name is empty".into());
     }
@@ -255,6 +270,7 @@ fn project_update(st: State<AppState>, id: String, name: String, folder: String,
         std::fs::create_dir_all(folder.trim()).map_err(|x| format!("The folder cannot be created: {x}"))?;
     }
     st.db.update_project(&id, &name, &folder, &suffix, sidecar).map_err(e)?;
+    st.sync_asset_scope(&app);
     st.projects()
 }
 
@@ -954,6 +970,7 @@ pub fn run() {
                 videos_dir: videos,
             });
             let h = app.handle().clone();
+            app.state::<AppState>().sync_asset_scope(&h);
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
             // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
             if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {

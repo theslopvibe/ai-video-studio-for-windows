@@ -68,16 +68,8 @@ impl Vast {
     }
 
     /// Worker URLs are signed by the Vast root CA; fetch it once and trust it for worker calls.
-    async fn worker_client(&self, insecure: bool) -> Result<reqwest::Client, String> {
+    async fn worker_client(&self) -> Result<reqwest::Client, String> {
         let mut g = self.worker.lock().await;
-        if insecure {
-            return reqwest::Client::builder()
-                .danger_accept_invalid_certs(true)
-                .connect_timeout(Duration::from_secs(20))
-                .timeout(Duration::from_secs(1800))
-                .build()
-                .map_err(err);
-        }
         if let Some(c) = g.as_ref() {
             return Ok(c.clone());
         }
@@ -156,14 +148,12 @@ impl Vast {
             "payload": { "input": { "request_id": request_id, "workflow_json": workflow } }
         });
         let endpoint = format!("{}/generate/sync", url.trim_end_matches('/'));
-        let mut insecure = false;
         loop {
-            let c = self.worker_client(insecure).await?;
+            let c = self.worker_client().await?;
             let t0 = std::time::Instant::now();
             crate::log::info(&format!("worker generate → {endpoint} (request {request_id})"));
-            // the account key is only sent over a verified TLS connection; the insecure retry relies on the signed auth_data alone
-            let req = c.post(&endpoint).json(&body);
-            match (if insecure { req } else { req.bearer_auth(key) }).send().await {
+            // the account key is only ever sent over a verified TLS connection (there is no insecure retry)
+            match c.post(&endpoint).json(&body).bearer_auth(key).send().await {
                 Ok(r) => {
                     let code = r.status();
                     let text = r.text().await.map_err(err)?;
@@ -172,11 +162,6 @@ impl Vast {
                         return Err(format!("Worker HTTP {code}: {}", text.chars().take(400).collect::<String>()));
                     }
                     return serde_json::from_str(&text).map_err(|e| format!("worker JSON: {e}"));
-                }
-                // The Vast root certificate uses a pathlen/keyUsage combination some strict TLS stacks reject.
-                // The request is still authenticated by the signed `auth_data`; retry once without chain checks.
-                Err(e) if !insecure && e.is_connect() && format!("{e:?}").to_lowercase().contains("cert") => {
-                    insecure = true;
                 }
                 Err(e) => {
                     crate::log::error(&format!("worker generate failed: {e:?}"));

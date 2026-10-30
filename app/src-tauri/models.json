@@ -185,7 +185,8 @@
   "nodes": [
    {
     "repo": "https://github.com/filliptm/ComfyUI_Fill-ChatterBox",
-    "name": "ComfyUI_Fill-ChatterBox"
+    "name": "ComfyUI_Fill-ChatterBox",
+    "rev": "f7d7a16187430abcaf91a3039b9c83aa9960816a"
    }
   ],
   "files": [
@@ -228,7 +229,8 @@
   "nodes": [
    {
     "repo": "https://github.com/filliptm/ComfyUI_Fill-ChatterBox",
-    "name": "ComfyUI_Fill-ChatterBox"
+    "name": "ComfyUI_Fill-ChatterBox",
+    "rev": "f7d7a16187430abcaf91a3039b9c83aa9960816a"
    }
   ],
   "files": [
@@ -255,7 +257,8 @@
   "nodes": [
    {
     "repo": "https://github.com/stavsap/comfyui-kokoro",
-    "name": "comfyui-kokoro"
+    "name": "comfyui-kokoro",
+    "rev": "cfb59b5605b351e196182c836f0b48c1a784e52f"
    }
   ],
   "files": []
@@ -273,7 +276,8 @@
   "nodes": [
    {
     "repo": "https://github.com/lldacing/ComfyUI_BiRefNet_ll",
-    "name": "ComfyUI_BiRefNet_ll"
+    "name": "ComfyUI_BiRefNet_ll",
+    "rev": "5443a2aa16cfbd98bb2f7dcc8bdcb70439e08529"
    }
   ],
   "files": []
@@ -309,7 +313,8 @@
   "nodes": [
    {
     "repo": "https://github.com/city96/ComfyUI-GGUF",
-    "name": "ComfyUI-GGUF"
+    "name": "ComfyUI-GGUF",
+    "rev": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a"
    }
   ],
   "files": [
@@ -344,7 +349,8 @@
   "nodes": [
    {
     "repo": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation",
-    "name": "ComfyUI-Frame-Interpolation"
+    "name": "ComfyUI-Frame-Interpolation",
+    "rev": "26545cc2dd95bc3d27f056016300673bdeee78f5"
    }
   ],
   "files": []
@@ -362,7 +368,8 @@
   "nodes": [
    {
     "repo": "https://github.com/ShmuelRonen/ComfyUI-LatentSyncWrapper",
-    "name": "ComfyUI-LatentSyncWrapper"
+    "name": "ComfyUI-LatentSyncWrapper",
+    "rev": "360d5283d7276aee68b4237b1387e594e4ce640e"
    }
   ],
   "files": [

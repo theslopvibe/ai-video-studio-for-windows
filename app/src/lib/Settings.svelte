@@ -263,7 +263,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.5.2" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.5.3" : ""}</p>
     <p>{S.lang === "el"
       ? "Ο Γιώργος Τσαγκαράκης χτίζει web, εφαρμογές και εργαλεία AI από το Ηράκλειο Κρήτης, και χαρίζει open-source εφαρμογές όπως αυτή."
       : "George Tsagkarakis builds websites, apps and AI tools from Heraklion, Crete, and gives away open-source apps like this one."}</p>

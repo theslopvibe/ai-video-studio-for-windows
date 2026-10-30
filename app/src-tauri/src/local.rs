@@ -379,7 +379,7 @@ pub async fn install_models(app: &AppHandle, st: &AppState, packs: &[Value], can
             let (repo, name) = (n["repo"].as_str().unwrap_or(""), n["name"].as_str().unwrap_or(""));
             if !repo.is_empty() && !name.is_empty() {
                 progress(app, "nodes", 0.0, name);
-                install_node(&root, repo, name, cancel, app).await?;
+                install_node(&root, repo, name, n["rev"].as_str().unwrap_or(""), cancel, app).await?;
             }
         }
         for f in pack["files"].as_array().cloned().unwrap_or_default() {
@@ -407,7 +407,7 @@ pub async fn install_models(app: &AppHandle, st: &AppState, packs: &[Value], can
     Ok(())
 }
 
-async fn install_node(root: &Path, repo: &str, name: &str, cancel: &AtomicBool, app: &AppHandle) -> Result<(), String> {
+async fn install_node(root: &Path, repo: &str, name: &str, rev: &str, cancel: &AtomicBool, app: &AppHandle) -> Result<(), String> {
     if !repo.starts_with("https://github.com/") || name.contains(['/', '\\', '.']) {
         return Err(format!("Refusing custom node {repo}"));
     }
@@ -416,7 +416,9 @@ async fn install_node(root: &Path, repo: &str, name: &str, cancel: &AtomicBool, 
         return Ok(());
     }
     let zip_path = comfy(root).join("custom_nodes").join(format!("{name}.zip"));
-    download(app, "nodes", &format!("{}/archive/HEAD.zip", repo.trim_end_matches('/')), &zip_path, cancel).await?;
+    // a pinned commit when the pack names one (a later change upstream cannot reach users), else the newest code
+    let at = if rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()) { rev } else { "HEAD" };
+    download(app, "nodes", &format!("{}/archive/{at}.zip", repo.trim_end_matches('/')), &zip_path, cancel).await?;
     let (z, d) = (zip_path.clone(), dest.clone());
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let mut ar = zip::ZipArchive::new(std::fs::File::open(&z).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
