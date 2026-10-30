@@ -22,3 +22,8 @@
 3. **UI redesign.** More practical and more beautiful: one workspace (Create / Library / Edit / Audio), model picker with Open source vs Paid and "good for" tips, per-project timeline, more options per mode.
 4. **Ten languages.** The 10 most spoken (total speakers): English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, Urdu. Greek stays as a bonus. Needs right-to-left layout for Arabic and Urdu, a language picker, and the strings split out of the components (today only EN/EL, in `i18n.ts`, `chatStrings.ts`, `guide.ts`, `wizard.ts`, workflow `name_*`/`desc_*`).
 5. **Donate service.** Create the account (Ko-fi, Buy Me a Coffee or GitHub Sponsors), then set `donate.url` in `slopvibe-site/data/site.json`. The app already links to the site page.
+
+## Next: updates and community (requested 2026-10-30)
+- **Auto-update from GitHub.** In-app "Update available" from the latest GitHub Release (Tauri updater plugin, signed `latest.json` uploaded with each Release). Every release process: bump version, build, upload installer + `latest.json` + signature. Applies to every SlopVibe app.
+- **Contributions from other users.** Issue and PR templates, CODEOWNERS, protected `main` (PR + review), CI on PRs, Dependabot, and a security review of every external PR (no keys, no unknown network hosts, no install scripts) before merge. Check `gh pr list` / `gh issue list` at the start of each session.
+- **Redesign rule:** only three creation pages: Image, Video, Audio. The form shows only what the selected model supports (start image only if the mode has an image input, end frame only if it supports first/last frame, and so on), driven by each workflow's `inputs`.
