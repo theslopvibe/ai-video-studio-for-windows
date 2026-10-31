@@ -44,6 +44,7 @@ pub struct InstanceInfo {
     pub usd_per_hour: f64,
     pub minutes: f64,
     pub cost_so_far: f64,
+    pub label: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -304,6 +305,7 @@ impl Vast {
                             usd_per_hour: dph,
                             minutes: mins,
                             cost_so_far: dph * mins / 60.0,
+                            label: x["label"].as_str().unwrap_or("").into(),
                         }
                     })
                     .collect()

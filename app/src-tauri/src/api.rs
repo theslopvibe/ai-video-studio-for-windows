@@ -215,11 +215,19 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
         }
         ("GET", ["v1", "vast"]) => {
             let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
-            Ok(json!({ "cards": st.vast.instances(&key).await? }))
+            Ok(json!({ "cards": st.vast.instances(&key).await?, "starting": crate::warm_state() == "preparing", "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()) }))
+        }
+        ("POST", ["v1", "card", "start"]) => {
+            if body["user_confirmed"] != json!(true) { return Err("Ask the user first (a card costs money while it runs), then call again with user_confirmed=true.".into()); }
+            if crate::warm_state() == "preparing" { return Ok(json!({ "message": "A card is already starting." })); }
+            let h = app.clone();
+            tauri::async_runtime::spawn(async move { let _ = crate::run_warm(&h).await; });
+            Ok(json!({ "message": "Starting a card. Check vast_running until its status is running, then send the videos. The app closes the card by itself when nothing happens for a while." }))
         }
         ("POST", ["v1", "vast", "stop"]) => {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first, then call again with user_confirmed=true.".into()); }
-            let id = body["id"].as_i64().unwrap_or(0);
+            // closing everything must be explicit: {"all": true}; otherwise a valid positive id is required
+            let id = if body["all"] == json!(true) { 0 } else { body["id"].as_i64().filter(|n| *n > 0).ok_or("Give a valid card id, or all=true to close all of this app's cards.")? };
             Ok(json!({ "message": crate::stop_vast(&st, id).await? }))
         }
         ("GET", ["v1", "workflows"]) => {

@@ -7,6 +7,7 @@ const readline = require("readline");
 
 const INSTRUCTIONS = `Model choice: list_workflows returns for each mode its license (open = free on the user's PC or a rented GPU, paid = billed per result by a provider and needs an API key), good_for (what it does best) and est_usd_per_result. When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price, and ask before using a paid one.
 AI Video Studio For Windows generates AI video (open-source models: LTX-Video, Wan 2.2) on rented cloud GPUs (Vast.ai) from the user's own desktop app. The app must be running on the user's PC.
+Money: a cloud card is billed the whole time it exists (starting, downloading models, idle, generating), not only while generating. The app closes its cards by itself after a few idle minutes. Use vast_running to show what is running and what it costs, card_start to prepare a card in advance, vast_stop (after asking) to close it at once, e.g. when the user says they are done.
 Workflow:
 1. Call video_studio_status first. If it fails, tell the user to open the "AI Video Studio For Windows" app.
 2. Each video costs real money (about 0.05-0.50 USD, more for long clips on big GPUs). Before generate_video, tell the user the model, length and rough cost and get a clear yes. Only then pass user_confirmed=true. Batches: one confirmation for the whole batch is enough if the user approved the count and cost.
@@ -149,6 +150,15 @@ const TOOLS = [
     run: (a) => call("POST", `/v1/jobs/${encodeURIComponent(a.job_id)}/retry`, {}),
   },
   {
+    name: "card_start",
+    description: "Start a cloud card on Vast NOW and prepare it (the models download), without making a video yet. Costs money while it runs. Ask the user first, then set user_confirmed=true. Returns at once; poll vast_running until the card status is running, then call generate_video. You do not need it before generate_video (that starts a card itself), only to have the card ready in advance.",
+    inputSchema: { type: "object", required: ["user_confirmed"], properties: { user_confirmed: { type: "boolean" } } },
+    run: async (a) => {
+      if (a.user_confirmed !== true) throw new Error("Ρώτα πρώτα τον χρήστη (η κάρτα κοστίζει όσο τρέχει) και ξανακάλεσε με user_confirmed=true.");
+      return call("POST", "/v1/card/start", { user_confirmed: true });
+    },
+  },
+  {
     name: "vast_running",
     description: "List the cloud cards currently rented on Vast (GPU, status, minutes running, cost so far, USD per hour). Every card listed is billed while it exists, even while loading. Call it when the user asks what is running or what they are being charged.",
     inputSchema: { type: "object", properties: {} },
@@ -156,11 +166,11 @@ const TOOLS = [
   },
   {
     name: "vast_stop",
-    description: "Close (destroy) a rented Vast card so billing stops: give id from vast_running, or omit id to close all. A job running on it will fail. Ask the user first, then set user_confirmed=true.",
-    inputSchema: { type: "object", required: ["user_confirmed"], properties: { id: { type: "integer" }, user_confirmed: { type: "boolean" } } },
+    description: "Close (destroy) a rented Vast card so billing stops: give id from vast_running, or all=true to close all of the app's cards. A job running on it will fail. Ask the user first, then set user_confirmed=true.",
+    inputSchema: { type: "object", required: ["user_confirmed"], properties: { id: { type: "integer" }, all: { type: "boolean", description: "Close all of the app's cards (use instead of id)." }, user_confirmed: { type: "boolean" } } },
     run: async (a) => {
       if (a.user_confirmed !== true) throw new Error("Ρώτα πρώτα τον χρήστη και ξανακάλεσε με user_confirmed=true.");
-      return call("POST", "/v1/vast/stop", { id: a.id || 0, user_confirmed: true });
+      return call("POST", "/v1/vast/stop", { id: a.id, all: a.all === true, user_confirmed: true });
     },
   },
   {

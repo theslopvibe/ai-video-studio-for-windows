@@ -85,7 +85,7 @@ fn catalog(st: &AppState) -> Vec<Value> {
 
 const SETTING_KEYS: &[&str] = &[
     "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project",
-    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled",
+    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "auto_close_min",
 ];
 
 #[derive(Serialize)]
@@ -572,16 +572,20 @@ async fn vast_destroy(st: State<'_, AppState>, id: i64) -> R<String> {
 
 pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
     let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
     WARM_CANCEL.store(true, Ordering::SeqCst);
     // cancel waiting jobs too, otherwise Vast starts a new card for them right after this one closes
     for f in st.cancels.lock().unwrap().values() { f.store(true, Ordering::Relaxed); }
     let list = st.vast.instances(&key).await?;
+    // only this app's own cards (workers of its endpoint); other cards on the account are never touched
+    let ours = |i: &vast::InstanceInfo| i.label.starts_with(&format!("{endpoint}:"));
     let mut n = 0;
-    for i in list.iter().filter(|i| id == 0 || i.id == id) {
+    for i in list.iter().filter(|i| ours(i) && (id == 0 || i.id == id)) {
         st.vast.destroy_instance(&key, i.id).await?;
         log::info(&format!("vast: destroyed instance {} ({})", i.id, i.gpu));
         n += 1;
     }
+    if id != 0 && n == 0 { return Err("That card is not one of this app's workers, so it was not touched.".into()); }
     Ok(format!("{n} card(s) closed."))
 }
 
@@ -591,12 +595,21 @@ static WARM_RUNNING: AtomicBool = AtomicBool::new(false);
 #[derive(Serialize, Clone)]
 struct WarmEvent { state: String, text: String, secs: u64 }
 
-/// "Prepare now": asks Vast for a worker without sending a job, so the models download now and the first video starts at once.
+/// "Start card": asks Vast for a worker without sending a job, so the models download now and the first video starts at once.
 /// The worker only reports ready after its start-up script (the model downloads) has finished. Costs GPU time while it waits.
 #[tauri::command]
-async fn warm_up(app: AppHandle, st: State<'_, AppState>) -> R<()> {
+async fn warm_up(app: AppHandle) -> R<()> {
+    run_warm(&app).await
+}
+
+pub fn warm_state() -> &'static str {
+    if WARM_RUNNING.load(Ordering::SeqCst) { "preparing" } else { "idle" }
+}
+
+pub async fn run_warm(app: &AppHandle) -> R<()> {
     use tauri::Emitter;
-    if WARM_RUNNING.swap(true, Ordering::SeqCst) { return Err("Already preparing a worker.".into()); }
+    let st = app.state::<AppState>();
+    if WARM_RUNNING.swap(true, Ordering::SeqCst) { return Err("Already preparing a card.".into()); }
     WARM_CANCEL.store(false, Ordering::SeqCst);
     let res = async {
         let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
@@ -611,7 +624,7 @@ async fn warm_up(app: AppHandle, st: State<'_, AppState>) -> R<()> {
         loop {
             if WARM_CANCEL.load(Ordering::SeqCst) { return Ok::<bool, String>(false); }
             if t0.elapsed() > std::time::Duration::from_secs(30 * 60) {
-                return Err("No worker became ready within 30 minutes. Check the endpoint and the GPU choice, then try again.".into());
+                return Err("No card became ready within 30 minutes. Check the card choice, then try again.".into());
             }
             match st.vast.route(&key, &endpoint, idx).await? {
                 vast::Route::Ready { .. } => return Ok(true),
@@ -630,6 +643,31 @@ async fn warm_up(app: AppHandle, st: State<'_, AppState>) -> R<()> {
         Ok(true) => { log::info("warm_up: ready"); let _ = app.emit("warmup", WarmEvent { state: "ready".into(), text: String::new(), secs: 0 }); Ok(()) }
         Ok(false) => { let _ = app.emit("warmup", WarmEvent { state: "cancelled".into(), text: String::new(), secs: 0 }); Ok(()) }
         Err(e) => { log::info(&format!("warm_up: failed: {e}")); let _ = app.emit("warmup", WarmEvent { state: "error".into(), text: e.clone(), secs: 0 }); Err(e) }
+    }
+}
+
+/// Safety net: closes the app's cards when nothing has been happening for `auto_close_min` minutes (default 10, 0 = never).
+pub async fn auto_close_loop(app: AppHandle) {
+    let mut last_active = std::time::Instant::now();
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let st = app.state::<AppState>();
+        let busy = WARM_RUNNING.load(Ordering::SeqCst)
+            || st.db.jobs(None).map(|j| j.iter().any(|j| matches!(j.status.as_str(), "queued" | "routing" | "generating" | "downloading"))).unwrap_or(false);
+        if busy { last_active = std::time::Instant::now(); continue; }
+        let limit: u64 = st.db.kv_get("auto_close_min").and_then(|v| v.parse().ok()).unwrap_or(10);
+        if limit == 0 || last_active.elapsed() < std::time::Duration::from_secs(limit * 60) { continue; }
+        let Some(key) = secrets::get("vast_api_key") else { continue };
+        let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+        if let Ok(list) = st.vast.instances(&key).await {
+            if list.iter().any(|i| i.label.starts_with(&format!("{endpoint}:"))) {
+                log::info(&format!("auto-close: nothing happened for {limit} min, closing the card(s)"));
+                if let Ok(m) = stop_vast(&st, 0).await {
+                    use tauri::Emitter;
+                    let _ = app.emit("card-auto-closed", m);
+                }
+            }
+        }
     }
 }
 
@@ -1090,6 +1128,7 @@ pub fn run() {
             let h = app.handle().clone();
             app.state::<AppState>().sync_asset_scope(&h);
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
+            tauri::async_runtime::spawn(auto_close_loop(h.clone()));
             // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
             if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {
                 api::set_enabled(&h, true);

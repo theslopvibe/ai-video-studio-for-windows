@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.5
+
+- Models page: one simple "My card (Vast)" box with the status (off / starting / ready), Start card, Delete card, the favourite card and an automatic close timer (default 10 minutes idle, so a forgotten card never keeps billing).
+- Claude Desktop extension 0.3.0: card_start, vast_running, vast_stop. Closing a card also cancels waiting jobs so Vast does not open a new one. Closing only touches the app's own cards and "close all" must be explicit.
+
 ## 0.7.4
 
 - Models page: new panel "What is running on Vast right now" shows every rented card (GPU, status, minutes, cost so far, $/hour) with a Close button, a warning for a card stuck in loading over 10 minutes, and refreshes every 10 seconds. Claude Desktop extension 0.2.2 can ask what is running (vast_running) and close cards (vast_stop).

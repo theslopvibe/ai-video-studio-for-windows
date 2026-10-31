@@ -98,18 +98,19 @@
     try { S.notify(await api.vastDestroy(id)); } catch (e) { vastErr = String(e); }
     await refreshCards();
   }
-  let perHour = $derived((cards ?? []).reduce((a, c) => a + c.usd_per_hour, 0));
   onMount(() => {
     refreshCards();
     const timer = setInterval(refreshCards, 10000);
     const un = listen<{ state: string; text: string; secs: number }>("warmup", (e) => {
       warm = e.payload;
+      if (e.payload.state !== "working") refreshCards();
       if (e.payload.state === "ready") S.notify(S.t("warm_ready"));
     });
     return () => { clearInterval(timer); un.then((f) => f()); };
   });
   async function prepare() {
     if (!(await askDialog(S.t("warm_confirm"), { kind: "warning" }))) return;
+    setTimeout(refreshCards, 3000);
     warm = { state: "working", text: "", secs: 0 };
     try { await api.warmUp(); } catch (e) { warm = { state: "error", text: String(e), secs: 0 }; }
   }
@@ -126,28 +127,34 @@
   <p class="dim">{S.t("models_intro")}</p>
 
   <div class="card">
-    <h2>{S.t("vast_title")}</h2>
+    <h2>{S.t("card_title")}</h2>
     {#if cards === null}<p class="dim small">…</p>
-    {:else if !cards.length}<p class="small">✔ {S.t("vast_none")}</p>
+    {:else if !cards.length && warm?.state !== "working"}
+      <p><b>{S.t("card_off")}</b></p>
+    {:else if warm?.state === "working" || cards.some((c) => c.status !== "running")}
+      <p><b>⏳ {S.t("card_starting")}</b> {#if warm?.state === "working"}{mmss(warm.secs)}{/if}</p>
+      <p class="small dim">{S.t("card_starting_help")}</p>
     {:else}
-      <p class="small dim">{S.t("vast_note")}</p>
-      <table>
-        <tbody>
-          {#each cards as c}
-            <tr>
-              <td><b>{c.gpu}</b> <span class="pill {c.status === 'running' ? 'ok' : 'warn'}">{c.status}</span>
-                {#if c.status === "loading" && c.minutes > 10}<div class="small">{S.t("vast_stuck")}</div>{/if}</td>
-              <td class="num small">{Math.round(c.minutes)} min · ${c.cost_so_far.toFixed(2)}<br /><span class="dim">${c.usd_per_hour.toFixed(2)}/h</span></td>
-              <td><button onclick={() => closeCard(c.id)}>{S.t("vast_close")}</button></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-      <div class="row" style="margin-top:8px">
-        <div class="grow small">{S.t("vast_total")}: <b>${perHour.toFixed(2)}/h</b></div>
-        {#if cards.length > 1}<button onclick={() => closeCard(0)}>{S.t("vast_close_all")}</button>{/if}
-      </div>
+      <p><b class="ok-text">✔ {S.t("card_ready")}</b></p>
     {/if}
+    {#each cards ?? [] as c}
+      <div class="row small" style="padding:2px 0">
+        <div class="grow"><b>{c.gpu}</b> <span class="pill {c.status === 'running' ? 'ok' : 'warn'}">{c.status}</span> · {Math.round(c.minutes)} min · ${c.cost_so_far.toFixed(2)} · ${c.usd_per_hour.toFixed(2)}/h
+          {#if c.status === "loading" && c.minutes > 10}<div>{S.t("vast_stuck")}</div>{/if}</div>
+      </div>
+    {/each}
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <button class="primary" onclick={prepare} disabled={warm?.state === "working" || !!cards?.length}>{S.t("card_start")}</button>
+      <button onclick={() => closeCard(0)} disabled={!cards?.length && warm?.state !== "working"}>{S.t("card_delete")}</button>
+    </div>
+    <div class="small dim" style="margin-top:8px">{S.t("card_fav")}: <b>{(S.settings.gpu_selection ?? "").split(",").filter(Boolean).join(", ") || S.t("card_fav_auto")}</b> · <button class="ghost small" onclick={() => (S.page = "gpu")}>{S.t("card_change")}</button></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_auto")}</span>
+      <select value={S.settings.auto_close_min ?? "10"} onchange={(e) => S.set("auto_close_min", e.currentTarget.value)} style="width:auto">
+        <option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="0">{S.t("card_never")}</option>
+      </select></div>
+    <p class="small dim" style="margin-top:6px">{S.t("card_note")}</p>
+    {#if warm?.state === "ready"}<div class="msg ok"><b>{S.t("warm_ready")}</b></div>{/if}
+    {#if warm?.state === "error"}<div class="msg err">{warm.text}</div>{/if}
     {#if vastErr}<div class="msg err">{vastErr}</div>{/if}
   </div>
 
@@ -176,14 +183,6 @@
     </div>
     <p class="small dim" style="margin-top:8px">{S.t("install_help")}</p>
     {#if note}<div class="msg {note.ok ? 'ok' : 'err'}">{note.text}</div>{/if}
-    <div class="row" style="margin-top:12px">
-      <button class="primary" onclick={prepare} disabled={warm?.state === "working"}>{S.t("warm_btn")}</button>
-      {#if warm?.state === "working"}<button onclick={() => api.warmCancel()}>{S.t("warm_stop")}</button>{/if}
-      <div class="grow small dim">{S.t("warm_help")}</div>
-    </div>
-    {#if warm?.state === "working"}<div class="msg">{S.t("warm_working")} {mmss(warm.secs)}{warm.text ? " · " + warm.text : ""}</div>{/if}
-    {#if warm?.state === "ready"}<div class="msg ok"><b>{S.t("warm_ready")}</b></div>{/if}
-    {#if warm?.state === "error"}<div class="msg err">{warm.text}</div>{/if}
     {#if script}
       <pre>{script}</pre>
       <button onclick={copy}>{S.t("copy")}</button>
