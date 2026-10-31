@@ -558,6 +558,33 @@ struct InstallResult {
     message: String,
 }
 
+#[tauri::command]
+async fn vast_instances(st: State<'_, AppState>) -> R<Vec<vast::InstanceInfo>> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    st.vast.instances(&key).await
+}
+
+/// Destroys one rented card (`id`), or all of them when `id` is 0. Also sets the endpoint to scale to zero.
+#[tauri::command]
+async fn vast_destroy(st: State<'_, AppState>, id: i64) -> R<String> {
+    stop_vast(&st, id).await
+}
+
+pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    WARM_CANCEL.store(true, Ordering::SeqCst);
+    // cancel waiting jobs too, otherwise Vast starts a new card for them right after this one closes
+    for f in st.cancels.lock().unwrap().values() { f.store(true, Ordering::Relaxed); }
+    let list = st.vast.instances(&key).await?;
+    let mut n = 0;
+    for i in list.iter().filter(|i| id == 0 || i.id == id) {
+        st.vast.destroy_instance(&key, i.id).await?;
+        log::info(&format!("vast: destroyed instance {} ({})", i.id, i.gpu));
+        n += 1;
+    }
+    Ok(format!("{n} card(s) closed."))
+}
+
 static WARM_CANCEL: AtomicBool = AtomicBool::new(false);
 static WARM_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -658,6 +685,8 @@ async fn install_on_workers(st: State<'_, AppState>, ids: Vec<String>, apply: bo
     body.insert("private".into(), json!(true));
     let new_hash = st.vast.create_template(&key, Value::Object(body)).await?;
     st.vast.set_template_hash(&key, ep.id, wg_id, &new_hash).await?;
+    // linking a template resets the workergroup filters (card choice); make the next job or "Prepare now" push them again
+    st.db.kv_set("gpu_applied", "").map_err(e)?;
     st.db.kv_set("worker_pack", &new_hash).map_err(e)?;
     Ok(InstallResult {
         script,
@@ -1085,7 +1114,7 @@ pub fn run() {
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
-            gpu_offers, apply_gpus, install_on_workers, warm_up, warm_cancel, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
+            gpu_offers, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output

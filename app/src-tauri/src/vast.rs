@@ -37,6 +37,16 @@ pub struct EndpointInfo {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct InstanceInfo {
+    pub id: i64,
+    pub gpu: String,
+    pub status: String,
+    pub usd_per_hour: f64,
+    pub minutes: f64,
+    pub cost_so_far: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct GpuOffer {
     pub name: String,
     pub vram_gb: f64,
@@ -273,6 +283,37 @@ impl Vast {
                     .collect()
             })
             .unwrap_or_default())
+    }
+
+    /// Cards currently rented on this account (running, loading, stopped). Each one is billed.
+    pub async fn instances(&self, key: &str) -> Result<Vec<InstanceInfo>, String> {
+        let v = self.console_get(key, "/api/v1/instances/").await?;
+        let arr = v.get("instances").cloned().unwrap_or(v);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        Ok(arr
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|x| {
+                        let dph = x["dph_total"].as_f64().unwrap_or(0.0);
+                        let mins = x["start_date"].as_f64().map(|s| ((now - s) / 60.0).max(0.0)).unwrap_or(0.0);
+                        InstanceInfo {
+                            id: x["id"].as_i64().unwrap_or(0),
+                            gpu: x["gpu_name"].as_str().unwrap_or("?").into(),
+                            status: x["actual_status"].as_str().or(x["cur_state"].as_str()).unwrap_or("?").into(),
+                            usd_per_hour: dph,
+                            minutes: mins,
+                            cost_so_far: dph * mins / 60.0,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// Destroys a rented card: billing stops at once (stopping it would still bill the disk).
+    pub async fn destroy_instance(&self, key: &str, id: i64) -> Result<(), String> {
+        self.console_send(reqwest::Method::DELETE, key, &format!("/api/v0/instances/{id}/"), json!({})).await.map(|_| ())
     }
 
     pub async fn scale_to_zero(&self, key: &str, endpoint_id: i64) -> Result<(), String> {

@@ -86,12 +86,27 @@
     busy = false;
   }
   let warm = $state<{ state: string; text: string; secs: number } | null>(null);
+  type Card = { id: number; gpu: string; status: string; usd_per_hour: number; minutes: number; cost_so_far: number };
+  let cards = $state<Card[] | null>(null);
+  let vastErr = $state("");
+  async function refreshCards() {
+    if (!S.secrets.vast_api_key) { cards = []; return; }
+    try { cards = await api.vastInstances(); vastErr = ""; } catch (e) { vastErr = String(e); }
+  }
+  async function closeCard(id: number) {
+    if (!(await askDialog(S.t("vast_confirm"), { kind: "warning" }))) return;
+    try { S.notify(await api.vastDestroy(id)); } catch (e) { vastErr = String(e); }
+    await refreshCards();
+  }
+  let perHour = $derived((cards ?? []).reduce((a, c) => a + c.usd_per_hour, 0));
   onMount(() => {
+    refreshCards();
+    const timer = setInterval(refreshCards, 10000);
     const un = listen<{ state: string; text: string; secs: number }>("warmup", (e) => {
       warm = e.payload;
       if (e.payload.state === "ready") S.notify(S.t("warm_ready"));
     });
-    return () => { un.then((f) => f()); };
+    return () => { clearInterval(timer); un.then((f) => f()); };
   });
   async function prepare() {
     if (!(await askDialog(S.t("warm_confirm"), { kind: "warning" }))) return;
@@ -109,6 +124,32 @@
 <div class="page">
   <h1>{S.t("models_title")}</h1>
   <p class="dim">{S.t("models_intro")}</p>
+
+  <div class="card">
+    <h2>{S.t("vast_title")}</h2>
+    {#if cards === null}<p class="dim small">…</p>
+    {:else if !cards.length}<p class="small">✔ {S.t("vast_none")}</p>
+    {:else}
+      <p class="small dim">{S.t("vast_note")}</p>
+      <table>
+        <tbody>
+          {#each cards as c}
+            <tr>
+              <td><b>{c.gpu}</b> <span class="pill {c.status === 'running' ? 'ok' : 'warn'}">{c.status}</span>
+                {#if c.status === "loading" && c.minutes > 10}<div class="small">{S.t("vast_stuck")}</div>{/if}</td>
+              <td class="num small">{Math.round(c.minutes)} min · ${c.cost_so_far.toFixed(2)}<br /><span class="dim">${c.usd_per_hour.toFixed(2)}/h</span></td>
+              <td><button onclick={() => closeCard(c.id)}>{S.t("vast_close")}</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:8px">
+        <div class="grow small">{S.t("vast_total")}: <b>${perHour.toFixed(2)}/h</b></div>
+        {#if cards.length > 1}<button onclick={() => closeCard(0)}>{S.t("vast_close_all")}</button>{/if}
+      </div>
+    {/if}
+    {#if vastErr}<div class="msg err">{vastErr}</div>{/if}
+  </div>
 
   <div class="card">
     <table>

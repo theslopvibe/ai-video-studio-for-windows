@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4
+
+- Models page: new panel "What is running on Vast right now" shows every rented card (GPU, status, minutes, cost so far, $/hour) with a Close button, a warning for a card stuck in loading over 10 minutes, and refreshes every 10 seconds. Claude Desktop extension 0.2.2 can ask what is running (vast_running) and close cards (vast_stop).
+- Fix: after "Install on workers" the card choice (for example RTX 4090) is applied again on the next job or "Prepare now" (linking the template had reset it).
+
 ## 0.7.3
 
 - New button "Prepare now" on the Models page: wakes a cloud card on Vast right away so the models download in advance, shows progress, and tells you when it is ready so the first video starts at once.

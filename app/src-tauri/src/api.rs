@@ -213,6 +213,15 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
                 "workflows": wf.len(), "workflow_errors": errs, "active_jobs": active,
             }))
         }
+        ("GET", ["v1", "vast"]) => {
+            let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+            Ok(json!({ "cards": st.vast.instances(&key).await? }))
+        }
+        ("POST", ["v1", "vast", "stop"]) => {
+            if body["user_confirmed"] != json!(true) { return Err("Ask the user first, then call again with user_confirmed=true.".into()); }
+            let id = body["id"].as_i64().unwrap_or(0);
+            Ok(json!({ "message": crate::stop_vast(&st, id).await? }))
+        }
         ("GET", ["v1", "workflows"]) => {
             let (wf, _) = st.load_workflows();
             let list: Vec<Value> = wf

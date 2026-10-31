@@ -149,6 +149,21 @@ const TOOLS = [
     run: (a) => call("POST", `/v1/jobs/${encodeURIComponent(a.job_id)}/retry`, {}),
   },
   {
+    name: "vast_running",
+    description: "List the cloud cards currently rented on Vast (GPU, status, minutes running, cost so far, USD per hour). Every card listed is billed while it exists, even while loading. Call it when the user asks what is running or what they are being charged.",
+    inputSchema: { type: "object", properties: {} },
+    run: () => call("GET", "/v1/vast"),
+  },
+  {
+    name: "vast_stop",
+    description: "Close (destroy) a rented Vast card so billing stops: give id from vast_running, or omit id to close all. A job running on it will fail. Ask the user first, then set user_confirmed=true.",
+    inputSchema: { type: "object", required: ["user_confirmed"], properties: { id: { type: "integer" }, user_confirmed: { type: "boolean" } } },
+    run: async (a) => {
+      if (a.user_confirmed !== true) throw new Error("Ρώτα πρώτα τον χρήστη και ξανακάλεσε με user_confirmed=true.");
+      return call("POST", "/v1/vast/stop", { id: a.id || 0, user_confirmed: true });
+    },
+  },
+  {
     name: "make_report",
     description: "Write a diagnostic report file (settings without secrets, recent jobs, log tail) and return its path. Use when something fails repeatedly.",
     inputSchema: { type: "object", properties: {} },

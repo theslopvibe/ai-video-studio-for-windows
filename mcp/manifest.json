@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "ai-video-studio",
   "display_name": "AI Video Studio For Windows",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Φτιάξε AI video (LTX-Video, Wan 2.2) μέσα από το chat του Claude, με το πρόγραμμα AI Video Studio For Windows.",
   "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio For Windows που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο Vast.ai, και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
   "author": {
@@ -54,6 +54,14 @@
     {
       "name": "retry_job",
       "description": "Επανάληψη αποτυχημένου"
+    },
+    {
+      "name": "vast_running",
+      "description": "Τι κάρτες τρέχουν και χρεώνονται στο Vast"
+    },
+    {
+      "name": "vast_stop",
+      "description": "Κλείσιμο κάρτας για να σταματήσει η χρέωση"
     },
     {
       "name": "make_report",
