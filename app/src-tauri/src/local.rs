@@ -556,12 +556,11 @@ pub fn randomize_seeds(v: &mut Value) {
 /// Runs `workflow` on the local ComfyUI. Returns the file bytes and its extension.
 pub async fn generate(st: &AppState, workflow: &Value, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync)) -> Result<(Vec<u8>, String), String> {
     start(st).await?;
-    generate_at(&format!("http://127.0.0.1:{PORT}"), None, workflow, cancel, tick).await
+    generate_at(&reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|e| e.to_string())?, &format!("http://127.0.0.1:{PORT}"), None, workflow, cancel, tick).await
 }
 
 /// Same, against any ComfyUI (a rented Vast card: `token` is sent as a bearer token).
-pub async fn generate_at(base: &str, token: Option<&str>, workflow: &Value, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync)) -> Result<(Vec<u8>, String), String> {
-    let c = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|e| e.to_string())?;
+pub async fn generate_at(c: &reqwest::Client, base: &str, token: Option<&str>, workflow: &Value, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync)) -> Result<(Vec<u8>, String), String> {
     let auth = |rb: reqwest::RequestBuilder| match token { Some(t) => rb.bearer_auth(t), None => rb };
     let mut workflow = workflow.clone();
     randomize_seeds(&mut workflow);

@@ -215,7 +215,10 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
         }
         ("GET", ["v1", "vast"]) => {
             let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
-            Ok(json!({ "cards": st.vast.instances(&key).await?, "starting": crate::warm_state() == "preparing", "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()) }))
+            let cards = st.vast.instances(&key).await?;
+            let (ready_flag, progress) = crate::card::state();
+            let ready = ready_flag && cards.iter().any(|c| c.label == crate::card::LABEL && c.status == "running");
+            Ok(json!({ "ready": ready, "progress": if ready { String::new() } else { progress }, "cards": cards, "starting": crate::warm_state() == "preparing", "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()) }))
         }
         ("POST", ["v1", "card", "start"]) => {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first (a card costs money while it runs), then call again with user_confirmed=true.".into()); }
@@ -225,7 +228,7 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
             let wf = match body["workflow_id"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_workflow(&wfs, q, "i2v")?), None => None };
             let gpu = match body["gpu"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_gpu(&st, q).await?.0), None => None };
             tauri::async_runtime::spawn(async move { let _ = crate::run_warm_with(&h, wf, gpu).await; });
-            Ok(json!({ "message": "Starting a card. Check vast_running until its status is running, then send the videos. The app closes the card by itself when nothing happens for a while." }))
+            Ok(json!({ "message": "Starting a card. Check vast_running until ready is true (status running alone is NOT enough: the models are still downloading, about 10-25 minutes; progress shows what it is doing), then send the videos. The app closes the card by itself when nothing happens for a while." }))
         }
         ("POST", ["v1", "vast", "stop"]) => {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first, then call again with user_confirmed=true.".into()); }

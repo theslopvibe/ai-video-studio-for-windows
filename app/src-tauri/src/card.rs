@@ -15,6 +15,33 @@ pub struct Card {
     pub id: i64,
     pub base: String,
     pub token: String,
+    /// Talks TLS to the card and trusts only the certificate made for it (so the token never travels in clear text).
+    pub client: reqwest::Client,
+}
+
+const HOST: &str = "aivs-card.local";
+static STATE: std::sync::Mutex<(bool, String)> = std::sync::Mutex::new((false, String::new()));
+
+fn set_state(ready: bool, msg: &str) {
+    if let Ok(mut s) = STATE.lock() {
+        *s = (ready, msg.to_string());
+    }
+}
+
+/// (ready, progress text). `ready` is only true once ComfyUI on the card answers; the caller also checks that the card still exists.
+pub fn state() -> (bool, String) {
+    STATE.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+fn gen_cert() -> Result<(String, String), String> {
+    let ck = rcgen::generate_simple_self_signed(vec![HOST.to_string()]).map_err(|e| e.to_string())?;
+    Ok((ck.cert.pem(), ck.key_pair.serialize_pem()))
+}
+
+fn make_client(cert_pem: &str, ip: &str, port: &str) -> Result<reqwest::Client, String> {
+    let cert = reqwest::Certificate::from_pem(cert_pem.as_bytes()).map_err(|e| e.to_string())?;
+    let addr: std::net::SocketAddr = format!("{ip}:{port}").parse().map_err(|_| format!("bad card address {ip}:{port}"))?;
+    reqwest::Client::builder().tls_built_in_root_certs(false).add_root_certificate(cert).resolve(HOST, addr).timeout(Duration::from_secs(120)).build().map_err(|e| e.to_string())
 }
 
 fn rand_token() -> String {
@@ -27,11 +54,11 @@ pub fn packs_for(st: &AppState, pack_ids: &[String]) -> Vec<Value> {
 }
 
 /// aiohttp (already in ComfyUI's Python) in front of ComfyUI: only requests with our bearer token get through.
-const PROXY: &str = r#"import os
+const PROXY: &str = r#"import os, ssl, hmac
 from aiohttp import web, ClientSession
 T = os.environ["AIVS_TOKEN"]
 async def h(req):
-    if req.headers.get("Authorization") != "Bearer " + T:
+    if not hmac.compare_digest(req.headers.get("Authorization", ""), "Bearer " + T):
         return web.Response(status=401)
     hd = {k: v for k, v in req.headers.items() if k.lower() not in ("host", "authorization", "content-length")}
     async with ClientSession() as s:
@@ -39,17 +66,25 @@ async def h(req):
             return web.Response(status=r.status, body=await r.read(), headers={"Content-Type": r.headers.get("Content-Type", "application/octet-stream")})
 app = web.Application(client_max_size=300 * 1024 ** 2)
 app.router.add_route("*", "/{p:.*}", h)
-web.run_app(app, port=8188, print=None)
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ctx.load_cert_chain("/workspace/aivs_cert.pem", "/workspace/aivs_key.pem")
+web.run_app(app, port=8188, ssl_context=ctx, print=None)
 "#;
 
 /// Start script of the rented machine: downloads the models + nodes into the image's ComfyUI, then starts ComfyUI (local only) and the token proxy.
-fn onstart(packs: &[Value], token: &str) -> String {
+fn onstart(packs: &[Value], token: &str, cert: &str, key: &str) -> String {
     let mut script = provision::build_script(packs, true).replacen("C=/workspace/ComfyUI", "C=/opt/workspace-internal/ComfyUI; [ -d $C ] || C=/workspace/ComfyUI", 1);
     script.push_str("echo AIVS_MODELS_DONE
 mkdir -p /workspace
 . /venv/main/bin/activate
 cd $C
 ");
+    script.push_str(&format!("cat > /workspace/aivs_cert.pem <<'CEOF'
+{cert}CEOF
+cat > /workspace/aivs_key.pem <<'CEOF'
+{key}CEOF
+chmod 600 /workspace/aivs_key.pem
+"));
     script.push_str(&format!("cat > /workspace/aivs_proxy.py <<'PYEOF'
 {PROXY}PYEOF
 "));
@@ -61,15 +96,14 @@ cd $C
 {}", provision::block(&script))
 }
 
-fn address(inst: &Value) -> Option<String> {
+fn address(inst: &Value) -> Option<(String, String)> {
     let ip = inst["public_ipaddr"].as_str().filter(|s| !s.is_empty())?;
     let port = inst["ports"]["8188/tcp"].as_array()?.first()?["HostPort"].as_str()?;
-    Some(format!("http://{ip}:{port}"))
+    Some((ip.to_string(), port.to_string()))
 }
 
-async fn probe(base: &str, token: &str, node: &str) -> bool {
-    let Ok(c) = reqwest::Client::builder().timeout(Duration::from_secs(6)).build() else { return false };
-    let Ok(r) = c.get(format!("{base}/object_info/{node}")).bearer_auth(token).send().await else { return false };
+async fn probe(c: &reqwest::Client, base: &str, token: &str, node: &str) -> bool {
+    let Ok(r) = c.get(format!("{base}/object_info/{node}")).bearer_auth(token).timeout(Duration::from_secs(6)).send().await else { return false };
     r.status().is_success() && r.json::<Value>().await.map(|v| v.get(node).is_some()).unwrap_or(false)
 }
 
@@ -78,13 +112,20 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
     let _guard = LOCK.lock().await;
     let key = secrets::get("vast_api_key").ok_or("Missing Vast API key (Settings).")?;
     let gpu = if gpu.is_empty() { "RTX 4090" } else { gpu };
+    set_state(false, "Starting…");
+    let say_outer = say;
+    let say = |m: &str| {
+        set_state(false, m);
+        say_outer(m)
+    };
     let want_packs = pack_ids.join(",");
     let mut ours: Vec<Value> = st.vast.instances_raw(&key).await?.into_iter().filter(|i| i["label"] == LABEL).collect();
     let token_saved = st.db.kv_get("card_token").unwrap_or_default();
+    let cert_saved = st.db.kv_get("card_cert").unwrap_or_default();
     let have_packs = st.db.kv_get("card_packs").unwrap_or_default();
     // reuse only a card that has the right GPU, the needed models and a token we know
     let reusable = ours.iter().position(|i| {
-        i["gpu_name"].as_str() == Some(gpu) && !token_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
+        i["gpu_name"].as_str() == Some(gpu) && !token_saved.is_empty() && !cert_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
     });
     let mut id = 0i64;
     if let Some(ix) = reusable {
@@ -98,6 +139,8 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
         }
     }
     let token = if id != 0 { token_saved } else { rand_token() };
+    // a new token and a new certificate for every new card
+    let (cert_pem, key_pem) = if id != 0 { (cert_saved, String::new()) } else { gen_cert()? };
     let packs = packs_for(st, pack_ids);
     let mut offers: Vec<(i64, f64)> = vec![];
     let mut tries = 0usize;
@@ -121,8 +164,9 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
             let (offer, dph) = offers.remove(0);
             say(&format!("Renting a {gpu} (~{dph:.2} USD/hour)…"));
             let env = json!({ "-p 8188:8188": "1" });
-            let new_id = st.vast.create_instance(&key, offer, json!({ "image": IMAGE, "env": env, "disk": DISK_GB, "label": LABEL, "runtype": "ssh", "onstart": onstart(&packs, &token) })).await?;
+            let new_id = st.vast.create_instance(&key, offer, json!({ "image": IMAGE, "env": env, "disk": DISK_GB, "label": LABEL, "runtype": "ssh", "onstart": onstart(&packs, &token, &cert_pem, &key_pem) })).await?;
             st.db.kv_set("card_token", &token).ok();
+            st.db.kv_set("card_cert", &cert_pem).ok();
             st.db.kv_set("card_packs", &want_packs).ok();
             crate::log::info(&format!("card: created instance {new_id} ({gpu}, offer {offer}, {dph:.2} USD/h)"));
             new_id
@@ -153,10 +197,13 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
             return Err("The card stopped by itself, so it was closed.".into());
         }
         if status == "running" {
-            if let Some(base) = address(inst) {
-                if probe(&base, &token, "AIVSSaveVideoBase64").await {
-                    crate::log::info(&format!("card: {id} ready after {}s at {base}", t0.elapsed().as_secs()));
-                    return Ok(Card { id, base, token });
+            if let Some((ip, port)) = address(inst) {
+                let base = format!("https://{HOST}:{port}");
+                let client = make_client(&cert_pem, &ip, &port)?;
+                if probe(&client, &base, &token, "AIVSSaveVideoBase64").await {
+                    crate::log::info(&format!("card: {id} ready after {}s at {ip}:{port}", t0.elapsed().as_secs()));
+                    set_state(true, "");
+                    return Ok(Card { id, base, token, client });
                 }
                 say(&format!("Card running, downloading the models… {}", crate::queue::fmt_secs(t0.elapsed().as_secs())));
                 if last_logs.elapsed() > Duration::from_secs(120) {

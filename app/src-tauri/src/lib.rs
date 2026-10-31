@@ -919,6 +919,24 @@ fn reveal(path: String) -> R<()> {
     Ok(())
 }
 
+#[derive(Serialize)]
+struct ConnectInfo { extension: String, installer_bat: String, exe: String, claude_code_cmd: String, folder: String }
+
+/// Where the Claude connection files are (shipped inside the installer) and the command for Claude Code.
+#[tauri::command]
+fn connect_info(app: AppHandle) -> R<ConnectInfo> {
+    let clean = |p: PathBuf| p.to_string_lossy().trim_start_matches(r"\?\").to_string();
+    let dir = app.path().resource_dir().map_err(e)?.join("connect");
+    let exe = clean(std::env::current_exe().map_err(e)?);
+    Ok(ConnectInfo {
+        extension: clean(dir.join("ai-video-studio.mcpb")),
+        installer_bat: clean(dir.join("Connect-Claude.bat")),
+        claude_code_cmd: format!("claude mcp add ai-video-studio -- \"{exe}\" --mcp"),
+        exe,
+        folder: clean(dir),
+    })
+}
+
 #[tauri::command]
 fn export_settings(st: State<AppState>, path: String) -> R<()> {
     let m: BTreeMap<String, String> =
@@ -1185,7 +1203,7 @@ pub fn run() {
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
-            gpu_offers, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
+            gpu_offers, connect_info, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output

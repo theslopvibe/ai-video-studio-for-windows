@@ -398,6 +398,15 @@ impl Vast {
 
     /// Cheapest suitable machine for one GPU model: (offer id, $/hour). Needs a big disk and a fast download link.
     pub async fn find_offers(&self, key: &str, gpu: &str, disk_gb: f64) -> Result<Vec<(i64, f64)>, String> {
+        // fast links first (the model download is most of the waiting time); slower ones only if none are free
+        let fast = self.find_offers_min(key, gpu, disk_gb, 1000.0).await?;
+        if !fast.is_empty() {
+            return Ok(fast);
+        }
+        self.find_offers_min(key, gpu, disk_gb, 400.0).await
+    }
+
+    async fn find_offers_min(&self, key: &str, gpu: &str, disk_gb: f64, min_mbps: f64) -> Result<Vec<(i64, f64)>, String> {
         let v = self
             .console_send(
                 reqwest::Method::POST,
@@ -408,7 +417,7 @@ impl Vast {
                     "verified": {"eq": true}, "rentable": {"eq": true}, "rented": {"eq": false},
                     "num_gpus": {"eq": 1}, "gpu_name": {"eq": gpu},
                     "disk_space": {"gte": disk_gb},
-                    "inet_down": {"gte": 400},
+                    "inet_down": {"gte": min_mbps},
                     "reliability": {"gte": 0.97},
                     "compute_cap": {"gte": 750}, "cuda_max_good": {"gte": 12.9},
                     "direct_port_count": {"gte": 2},

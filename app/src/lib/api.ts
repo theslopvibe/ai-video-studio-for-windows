@@ -122,6 +122,7 @@ export const api = {
   logUi: (level: string, msg: string) => invoke<void>("log_ui", { level, msg }),
   logsReport: () => invoke<string>("logs_report"),
   logsDir: () => invoke<string>("logs_dir"),
+  connectInfo: () => invoke<{ extension: string; installer_bat: string; exe: string; claude_code_cmd: string; folder: string }>("connect_info"),
   reveal: (path: string) => invoke<void>("reveal", { path }),
   exportSettings: (path: string) => invoke<void>("export_settings", { path }),
   importSettings: (path: string) => invoke<void>("import_settings", { path }),

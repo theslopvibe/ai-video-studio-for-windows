@@ -10,6 +10,10 @@
   import { check as checkUpdate } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
 
+  let conn = $state<{ extension: string; installer_bat: string; exe: string; claude_code_cmd: string; folder: string } | null>(null);
+  api.connectInfo().then((c) => (conn = c)).catch(() => {});
+  async function copyText(t: string) { await navigator.clipboard.writeText(t).catch(() => {}); S.notify(S.t("copied")); }
+
   let upd = $state("");
   let updBusy = $state(false);
   async function updateApp() {
@@ -271,17 +275,39 @@
   </div>
 
   <div class="card">
-    <h2>{S.lang === "el" ? "Σύνδεση με Claude Desktop (προαιρετική)" : "Claude Desktop connection (optional)"}</h2>
+    <h2>{S.lang === "el" ? "Σύνδεση με Claude (Claude Desktop ή Claude Code)" : "Connect to Claude (Claude Desktop or Claude Code)"}</h2>
     <p class="small dim">{S.lang === "el"
-      ? "Απενεργοποιημένη από προεπιλογή: τίποτα δεν ακούει στον υπολογιστή σου. Αν την ανοίξεις, η εφαρμογή ακούει μόνο στο ίδιο PC με μυστικό κωδικό ώστε η επέκταση MCP του Claude Desktop να δίνει εντολές. Ισχύει αμέσως."
-      : "Off by default: nothing listens on your computer. If you turn it on, the app listens on this PC only, behind a secret token, so the Claude Desktop MCP extension can send it commands. Takes effect immediately."}</p>
-    <label class="row"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
-      {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με Claude Desktop" : "Allow the Claude Desktop connection"}</label>
+      ? "Τι κάνει: μπορείς να γράφεις στο Claude με απλά λόγια, π.χ. «φτιάξε ένα βίντεο 5 δευτερολέπτων με Wan 2.2 από αυτή τη φωτογραφία, στη 4090», και το Claude χρησιμοποιεί αυτό το πρόγραμμα για να το φτιάξει. Μπορεί επίσης να επιλέγει μοντέλο και κάρτα, να λέει πόσο θα κοστίσει, και να σε ενημερώνει όταν η κάρτα είναι έτοιμη."
+      : "What it does: you can talk to Claude in plain words, e.g. “make a 5-second video with Wan 2.2 from this photo on a 4090”, and Claude uses this program to make it. It can also pick the model and the card, tell you the price, and let you know when the card is ready."}</p>
+    <p class="small dim">{S.lang === "el"
+      ? "Πώς δουλεύει: Claude → σύνδεση (extension ή εντολή) → αυτό το πρόγραμμα, μόνο μέσα στον υπολογιστή σου και με μυστικό κωδικό → το πρόγραμμα ενοικιάζει μια κάρτα στο Vast.ai (ή τρέχει στο PC σου) και σώζει το βίντεο στον φάκελό σου. Το Claude ρωτά πριν ξοδέψει χρήματα. Την πρώτη φορά η κάρτα θέλει 15–25 λεπτά να στηθεί (κατεβαίνουν τα μοντέλα), μετά κάθε βίντεο βγαίνει σε 1–3 λεπτά. Η κάρτα κλείνει μόνη της μετά από ~10 λεπτά αδράνειας. Το πρόγραμμα πρέπει να είναι ανοιχτό (μπορεί και ελαχιστοποιημένο)."
+      : "How it works: Claude → connection (extension or command) → this program, only inside your computer and behind a secret token → the program rents a card on Vast.ai (or runs on your PC) and saves the video in your folder. Claude asks before spending money. The first time, a card takes 15–25 minutes to set up (the models download); after that each video takes 1–3 minutes. The card closes by itself after ~10 idle minutes. The program must be open (minimised is fine)."}</p>
+    <p><b>{S.lang === "el" ? "Βήμα 1" : "Step 1"}</b> — <label class="row" style="display:inline-flex"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
+      {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με το Claude (ακούει μόνο σε αυτό το PC)" : "Allow the Claude connection (listens on this PC only)"}</label></p>
+    <p><b>{S.lang === "el" ? "Βήμα 2α — Claude Desktop" : "Step 2a — Claude Desktop"}</b></p>
+    <p class="small dim">{S.lang === "el"
+      ? "Επιλογή 1 (πιο εύκολη): πάτα «Δείξε το αρχείο extension» και σύρε το αρχείο .mcpb μέσα στο παράθυρο του Claude Desktop (ή διπλό κλικ), μετά «Install». Επιλογή 2: «Δείξε το Connect-Claude.bat» και διπλό κλικ· προσθέτει τη σύνδεση μόνο του, χωρίς αρχείο extension. Μετά κλείσε και ξανάνοιξε το Claude Desktop."
+      : "Option 1 (easiest): press “Show extension file” and drag the .mcpb file into the Claude Desktop window (or double-click it), then “Install”. Option 2: “Show Connect-Claude.bat” and double-click it; it adds the connection by itself, no extension file needed. Then close and reopen Claude Desktop."}</p>
+    <div class="row">
+      <button disabled={!conn} onclick={() => conn && S.run(() => api.reveal(conn!.extension))}>{S.lang === "el" ? "Δείξε το αρχείο extension (.mcpb)" : "Show extension file (.mcpb)"}</button>
+      <button disabled={!conn} onclick={() => conn && S.run(() => api.reveal(conn!.installer_bat))}>{S.lang === "el" ? "Δείξε το Connect-Claude.bat" : "Show Connect-Claude.bat"}</button>
+    </div>
+    <p><b>{S.lang === "el" ? "Βήμα 2β — Claude Code (τερματικό)" : "Step 2b — Claude Code (terminal)"}</b></p>
+    <p class="small dim">{S.lang === "el"
+      ? "Αντίγραψε την εντολή, άνοιξε ένα τερματικό και επικόλλησέ την μία φορά. Το Claude Code θα βλέπει τα εργαλεία του προγράμματος."
+      : "Copy the command, open a terminal and paste it once. Claude Code will then see this program's tools."}</p>
+    <div class="row">
+      <input readonly style="flex:1" value={conn?.claude_code_cmd ?? ""} />
+      <button disabled={!conn} onclick={() => conn && copyText(conn.claude_code_cmd)}>{S.lang === "el" ? "Αντιγραφή" : "Copy"}</button>
+    </div>
+    <p class="small dim"><b>{S.lang === "el" ? "Βήμα 3" : "Step 3"}</b> — {S.lang === "el"
+      ? "Ρώτα το Claude, π.χ. «τι μοντέλα και κάρτες έχεις;» ή «φτιάξε βίντεο με Wan 2.2 από αυτή την εικόνα στη 4090». Για να κλείσεις την κάρτα πες «τελείωσα, κλείσε την κάρτα»."
+      : "Ask Claude, e.g. “what models and cards do you have?” or “make a video with Wan 2.2 from this image on a 4090”. To stop billing say “I’m done, close the card”."}</p>
   </div>
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.7.7" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.7.8" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

@@ -49,10 +49,13 @@ pub fn build_script(packs: &[Value], include_local_node: bool) -> String {
                     Some(rel) if rel.starts_with("custom_nodes/") && !rel.contains("..") => format!("$C/{rel}"),
                     _ => format!("$M/{dir}"),
                 };
-                s.push_str(&format!("dl \"{url}\" \"{target}/{file}\"\n"));
+                s.push_str(&format!("dl \"{url}\" \"{target}/{file}\" &\n"));
             }
         }
     }
+    // all files download side by side (one connection alone is often throttled), then wait for every one
+    s.push_str("wait
+");
     s
 }
 

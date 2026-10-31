@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.8
+
+- The connection to the rented card is now encrypted (TLS with a certificate made for each card and trusted only by the app), the token is compared in constant time, and every new card gets a new token and certificate.
+- Claude chat can tell when the card is ready: `vast_running` returns `ready` (true only when ComfyUI on the card accepts work) and `progress`. The app also signals ready. Extension 0.3.2.
+- Faster card setup: only machines with a 1 Gbit/s or faster link are rented first, and the model files download side by side.
+- New "Connect to Claude" section in Settings, with the extension file (.mcpb) and Connect-Claude.bat shipped inside the installer: what it does, how it works, steps for Claude Desktop and a copy-paste command for Claude Code.
+
 ## 0.7.7
 
 - Vast now runs on a real rented card instead of serverless (serverless never produced a ready worker). The first video rents the GPU you picked (for example RTX 4090), installs the model on it and runs ComfyUI behind a private token; the following videos reuse the same card. First real Wan 2.2 image-to-video made this way on an RTX 4090.

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.7.7"
+version = "0.7.8"
 description = "AI Video Studio For Windows"
 authors = ["AI Video Studio For Windows"]
 edition = "2021"
@@ -23,6 +23,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 futures-util = "0.3"
 keyring = { version = "3", features = ["windows-native"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+rcgen = "0.13"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 anyhow = "1"

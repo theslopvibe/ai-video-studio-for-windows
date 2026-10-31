@@ -298,11 +298,15 @@ async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<Str
     let (a, id) = (app.clone(), job.id.clone());
     let say = move |m: &str| set(&a, &id, "routing", m, "");
     let card = crate::card::ensure(&st, &gpu, packs, cancel, &say).await?;
+    {
+        use tauri::Emitter;
+        let _ = app.emit("warmup", serde_json::json!({ "state": "ready", "text": "", "secs": 0 }));
+    }
     let (a, id) = (app.clone(), job.id.clone());
     let tick = move |s: u64| set(&a, &id, "generating", &format!("Generating on the rented card… {}", fmt_secs(s)), "");
     let mut wf = workflow.clone();
     crate::local::randomize_seeds(&mut wf);
-    let (bytes, ext) = crate::local::generate_at(&card.base, Some(&card.token), &wf, cancel, &tick).await?;
+    let (bytes, ext) = crate::local::generate_at(&card.client, &card.base, Some(&card.token), &wf, cancel, &tick).await?;
     save_result(app, job, params, &wf_name, t0, bytes, ext).await
 }
 
