@@ -558,6 +558,57 @@ struct InstallResult {
     message: String,
 }
 
+static WARM_CANCEL: AtomicBool = AtomicBool::new(false);
+static WARM_RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[derive(Serialize, Clone)]
+struct WarmEvent { state: String, text: String, secs: u64 }
+
+/// "Prepare now": asks Vast for a worker without sending a job, so the models download now and the first video starts at once.
+/// The worker only reports ready after its start-up script (the model downloads) has finished. Costs GPU time while it waits.
+#[tauri::command]
+async fn warm_up(app: AppHandle, st: State<'_, AppState>) -> R<()> {
+    use tauri::Emitter;
+    if WARM_RUNNING.swap(true, Ordering::SeqCst) { return Err("Already preparing a worker.".into()); }
+    WARM_CANCEL.store(false, Ordering::SeqCst);
+    let res = async {
+        let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+        let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+        let want: Vec<String> = st.db.kv_get("gpu_selection").unwrap_or_default().split(',').filter(|x| !x.is_empty()).map(String::from).collect();
+        if !want.is_empty() && st.db.kv_get("gpu_applied").unwrap_or_default() != want.join(",") {
+            apply_gpu_filter(&st, &want, 24.0, 0.0, false).await?;
+        }
+        let t0 = std::time::Instant::now();
+        let (mut idx, mut attempt) = (0i64, 0u32);
+        log::info("warm_up: start");
+        loop {
+            if WARM_CANCEL.load(Ordering::SeqCst) { return Ok::<bool, String>(false); }
+            if t0.elapsed() > std::time::Duration::from_secs(30 * 60) {
+                return Err("No worker became ready within 30 minutes. Check the endpoint and the GPU choice, then try again.".into());
+            }
+            match st.vast.route(&key, &endpoint, idx).await? {
+                vast::Route::Ready { .. } => return Ok(true),
+                vast::Route::Waiting { request_idx, status } => {
+                    idx = request_idx;
+                    let _ = app.emit("warmup", WarmEvent { state: "working".into(), text: status, secs: t0.elapsed().as_secs() });
+                    attempt += 1;
+                    tokio::time::sleep(std::time::Duration::from_secs_f32((1.5 * attempt as f32).min(6.0))).await;
+                }
+            }
+        }
+    }
+    .await;
+    WARM_RUNNING.store(false, Ordering::SeqCst);
+    match res {
+        Ok(true) => { log::info("warm_up: ready"); let _ = app.emit("warmup", WarmEvent { state: "ready".into(), text: String::new(), secs: 0 }); Ok(()) }
+        Ok(false) => { let _ = app.emit("warmup", WarmEvent { state: "cancelled".into(), text: String::new(), secs: 0 }); Ok(()) }
+        Err(e) => { log::info(&format!("warm_up: failed: {e}")); let _ = app.emit("warmup", WarmEvent { state: "error".into(), text: e.clone(), secs: 0 }); Err(e) }
+    }
+}
+
+#[tauri::command]
+fn warm_cancel() { WARM_CANCEL.store(true, Ordering::SeqCst); }
+
 /// Builds the worker install script (selected models + their custom nodes + the local-save node).
 /// With `apply`, it is written into a new private copy of the Vast template and the workergroup is pointed at it.
 #[tauri::command]
@@ -1034,7 +1085,7 @@ pub fn run() {
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
-            gpu_offers, apply_gpus, install_on_workers, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
+            gpu_offers, apply_gpus, install_on_workers, warm_up, warm_cancel, setup_endpoint, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output

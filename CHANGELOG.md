@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- New button "Prepare now" on the Models page: wakes a cloud card on Vast right away so the models download in advance, shows progress, and tells you when it is ready so the first video starts at once.
+
 ## 0.7.2
 
 - Fix: "Install on workers" failed on Vast with "template search_query must be a dict, got str". The template filters are now sent as an object.

@@ -3,6 +3,9 @@
   import Stars from "./Stars.svelte";
   import { open as pickDialog } from "@tauri-apps/plugin-dialog";
   import { S } from "./store.svelte";
+  import { ask as askDialog } from "@tauri-apps/plugin-dialog";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount } from "svelte";
 
   let packs = $derived(S.boot?.models ?? []);
 
@@ -82,6 +85,20 @@
     catch (e) { note = { ok: false, text: String(e) }; }
     busy = false;
   }
+  let warm = $state<{ state: string; text: string; secs: number } | null>(null);
+  onMount(() => {
+    const un = listen<{ state: string; text: string; secs: number }>("warmup", (e) => {
+      warm = e.payload;
+      if (e.payload.state === "ready") S.notify(S.t("warm_ready"));
+    });
+    return () => { un.then((f) => f()); };
+  });
+  async function prepare() {
+    if (!(await askDialog(S.t("warm_confirm"), { kind: "warning" }))) return;
+    warm = { state: "working", text: "", secs: 0 };
+    try { await api.warmUp(); } catch (e) { warm = { state: "error", text: String(e), secs: 0 }; }
+  }
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   async function copy() { await navigator.clipboard.writeText(script); S.notify(S.t("copied")); }
   async function reload() {
     const r = await S.run(() => api.reloadWorkflows());
@@ -118,6 +135,14 @@
     </div>
     <p class="small dim" style="margin-top:8px">{S.t("install_help")}</p>
     {#if note}<div class="msg {note.ok ? 'ok' : 'err'}">{note.text}</div>{/if}
+    <div class="row" style="margin-top:12px">
+      <button class="primary" onclick={prepare} disabled={warm?.state === "working"}>{S.t("warm_btn")}</button>
+      {#if warm?.state === "working"}<button onclick={() => api.warmCancel()}>{S.t("warm_stop")}</button>{/if}
+      <div class="grow small dim">{S.t("warm_help")}</div>
+    </div>
+    {#if warm?.state === "working"}<div class="msg">{S.t("warm_working")} {mmss(warm.secs)}{warm.text ? " · " + warm.text : ""}</div>{/if}
+    {#if warm?.state === "ready"}<div class="msg ok"><b>{S.t("warm_ready")}</b></div>{/if}
+    {#if warm?.state === "error"}<div class="msg err">{warm.text}</div>{/if}
     {#if script}
       <pre>{script}</pre>
       <button onclick={copy}>{S.t("copy")}</button>
