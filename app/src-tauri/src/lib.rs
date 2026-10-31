@@ -8,6 +8,7 @@ mod db;
 mod editor;
 mod llm;
 mod local;
+mod mcp;
 mod provision;
 mod queue;
 mod secrets;
@@ -1092,6 +1093,11 @@ async fn local_stop(st: State<'_, AppState>) -> R<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Claude Desktop starts "app.exe --mcp" as its connector: no window, just the MCP protocol on stdin/stdout.
+    if std::env::args().any(|a| a == "--mcp") {
+        mcp::run();
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.6
+
+- Claude Desktop connector built into the program (`app.exe --mcp`), for computers where the .mcpb extension is not accepted. Run mcp/Connect-Claude.bat once; it adds the connector to claude_desktop_config.json (backup kept). No extension file and no Node.js needed.
+
 ## 0.7.5
 
 - Models page: one simple "My card (Vast)" box with the status (off / starting / ready), Start card, Delete card, the favourite card and an automatic close timer (default 10 minutes idle, so a forgotten card never keeps billing).
