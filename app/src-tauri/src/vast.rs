@@ -305,12 +305,12 @@ impl Vast {
         Ok(None)
     }
 
-    pub async fn set_search_params(&self, key: &str, workergroup_id: i64, search_params: &str, gpu_ram_gb: f64) -> Result<(), String> {
+    pub async fn set_search_params(&self, key: &str, endpoint_id: i64, workergroup_id: i64, search_params: &str, gpu_ram_gb: f64) -> Result<(), String> {
         self.console_send(
             reqwest::Method::PUT,
             key,
             &format!("/api/v0/workergroups/{workergroup_id}/"),
-            json!({ "search_params": search_params, "gpu_ram": gpu_ram_gb }),
+            json!({ "endpoint_id": endpoint_id, "search_params": search_params, "gpu_ram": gpu_ram_gb }),
         )
         .await
         .map(|_| ())
@@ -342,12 +342,12 @@ impl Vast {
         crate::provision::find_hash(&r).ok_or_else(|| format!("Vast returned no hash_id: {r}"))
     }
 
-    pub async fn set_template_hash(&self, key: &str, workergroup_id: i64, hash: &str) -> Result<(), String> {
+    pub async fn set_template_hash(&self, key: &str, endpoint_id: i64, workergroup_id: i64, hash: &str) -> Result<(), String> {
         self.console_send(
             reqwest::Method::PUT,
             key,
             &format!("/api/v0/workergroups/{workergroup_id}/"),
-            json!({ "template_hash": hash }),
+            json!({ "endpoint_id": endpoint_id, "template_hash": hash }),
         )
         .await
         .map(|_| ())

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- Fix: "Install on workers" and the GPU choice failed on Vast with "Missing endpoint ID". Vast needs the endpoint id on workergroup updates; the app now sends it.
+
 ## 0.7.0
 
 - Automatic updates: Settings > About > "Check for updates" downloads and installs signed new versions and keeps your data. Install this version by hand once; later versions update from inside the app.

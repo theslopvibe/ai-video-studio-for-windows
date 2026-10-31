@@ -538,7 +538,7 @@ pub async fn apply_gpu_filter(st: &AppState, gpus: &[String], min_vram: f64, dph
         return soft("No workergroup found for the endpoint.");
     };
     let merged = vast::merge_gpu_filter(&sp, gpus);
-    st.vast.set_search_params(&key, wg, &merged, min_vram).await?;
+    st.vast.set_search_params(&key, ep.id, wg, &merged, min_vram).await?;
     st.db.kv_set("gpu_applied", &gpus.join(",")).map_err(e)?;
     Ok(format!("search_params = {merged}"))
 }
@@ -599,7 +599,7 @@ async fn install_on_workers(st: State<'_, AppState>, ids: Vec<String>, apply: bo
     body.insert("recommended_disk_space".into(), json!(disk));
     body.insert("private".into(), json!(true));
     let new_hash = st.vast.create_template(&key, Value::Object(body)).await?;
-    st.vast.set_template_hash(&key, wg_id, &new_hash).await?;
+    st.vast.set_template_hash(&key, ep.id, wg_id, &new_hash).await?;
     st.db.kv_set("worker_pack", &new_hash).map_err(e)?;
     Ok(InstallResult {
         script,
