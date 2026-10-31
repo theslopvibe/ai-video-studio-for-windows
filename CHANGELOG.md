@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Fix: "Install on workers" failed on Vast with "template search_query must be a dict, got str". The template filters are now sent as an object.
+
 ## 0.7.1
 
 - Fix: "Install on workers" and the GPU choice failed on Vast with "Missing endpoint ID". Vast needs the endpoint id on workergroup updates; the app now sends it.

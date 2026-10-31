@@ -590,7 +590,14 @@ async fn install_on_workers(st: State<'_, AppState>, ids: Vec<String>, apply: bo
         ("docker_login_repo", "docker_login_repo"), ("extra_filters", "extra_filters"),
         ("readme", "readme"), ("readme_visible", "readme_visible"), ("desc", "desc"),
     ] {
-        body.insert(to.into(), t.get(from).cloned().unwrap_or(Value::Null));
+        let mut v = t.get(from).cloned().unwrap_or(Value::Null);
+        // Vast returns extra_filters as a JSON string but wants an object when a template is created.
+        if from == "extra_filters" {
+            if let Value::String(s) = &v {
+                v = serde_json::from_str::<Value>(s).ok().filter(|x| x.is_object()).unwrap_or_else(|| json!({}));
+            }
+        }
+        body.insert(to.into(), v);
     }
     let base_name = t["name"].as_str().unwrap_or("ComfyUI Wan 2.2").trim_start_matches("AIVS ").to_string();
     let disk = t["recommended_disk_space"].as_f64().unwrap_or(100.0).max(100.0 + gb);
