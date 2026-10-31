@@ -221,7 +221,10 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first (a card costs money while it runs), then call again with user_confirmed=true.".into()); }
             if crate::warm_state() == "preparing" { return Ok(json!({ "message": "A card is already starting." })); }
             let h = app.clone();
-            tauri::async_runtime::spawn(async move { let _ = crate::run_warm(&h).await; });
+            let (wfs, _) = st.load_workflows();
+            let wf = match body["workflow_id"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_workflow(&wfs, q, "i2v")?), None => None };
+            let gpu = match body["gpu"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_gpu(&st, q).await?.0), None => None };
+            tauri::async_runtime::spawn(async move { let _ = crate::run_warm_with(&h, wf, gpu).await; });
             Ok(json!({ "message": "Starting a card. Check vast_running until its status is running, then send the videos. The app closes the card by itself when nothing happens for a while." }))
         }
         ("POST", ["v1", "vast", "stop"]) => {
@@ -359,12 +362,19 @@ fn resolve_workflow(wfs: &[crate::workflows::Workflow], q: &str, kind: &str) -> 
     if let Some(w) = wfs.iter().find(|w| w.meta.id == ql) {
         return Ok(w.meta.id.clone());
     }
-    let key: String = ql.chars().filter(|c| c.is_alphanumeric()).collect();
+    let mut key: String = ql.chars().filter(|c| c.is_alphanumeric()).collect();
+    // "wan 2.2 image to video" -> "wan22": the kind is decided from the inputs, so generic words are dropped
+    let has = |k: &str| wfs.iter().any(|w| w.meta.id.chars().filter(|c| c.is_alphanumeric()).collect::<String>().contains(k));
+    if !has(&key) {
+        for w in ["imagetovideo", "texttovideo", "imagetoimage", "image", "video", "text", "lightning", "model"] {
+            key = key.replace(w, "");
+        }
+    }
     let mut hits: Vec<&crate::workflows::Workflow> = wfs
         .iter()
         .filter(|w| {
             let id: String = w.meta.id.chars().filter(|c| c.is_alphanumeric()).collect();
-            id.contains(&key) || w.meta.name_en.to_lowercase().contains(&ql)
+            (!key.is_empty() && id.contains(&key)) || w.meta.name_en.to_lowercase().contains(&ql)
         })
         .collect();
     hits.sort_by_key(|w| (w.meta.kind != kind, w.meta.priority));

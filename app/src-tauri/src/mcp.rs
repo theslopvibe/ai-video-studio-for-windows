@@ -87,7 +87,7 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
             if !confirmed {
                 return Err("Ρώτα πρώτα τον χρήστη (η κάρτα κοστίζει όσο τρέχει) και ξανακάλεσε με user_confirmed=true.".into());
             }
-            call(c, "POST", "/v1/card/start", Some(json!({ "user_confirmed": true }))).await
+            call(c, "POST", "/v1/card/start", Some(json!({ "user_confirmed": true, "workflow_id": a["workflow_id"], "gpu": a["gpu"] }))).await
         }
         "vast_running" => call(c, "GET", "/v1/vast", None).await,
         "vast_stop" => {

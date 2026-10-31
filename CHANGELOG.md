@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.7
+
+- Vast now runs on a real rented card instead of serverless (serverless never produced a ready worker). The first video rents the GPU you picked (for example RTX 4090), installs the model on it and runs ComfyUI behind a private token; the following videos reuse the same card. First real Wan 2.2 image-to-video made this way on an RTX 4090.
+- The card is closed by the Close button, by the idle timer (default 10 minutes) or from Claude chat (vast_stop). A machine that cannot pull the image is replaced automatically (up to 4 tries); machines in China are skipped.
+- Claude chat: "make a video with Wan 2.2 from this picture on a 4090" is understood (generic words like "image to video" are ignored when matching the model). card_start accepts workflow_id and gpu to prepare a specific card in advance.
+
 ## 0.7.6
 
 - Claude Desktop connector built into the program (`app.exe --mcp`), for computers where the .mcpb extension is not accepted. Run mcp/Connect-Claude.bat once; it adds the connector to claude_desktop_config.json (backup kept). No extension file and no Node.js needed.

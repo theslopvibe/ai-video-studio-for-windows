@@ -556,11 +556,16 @@ pub fn randomize_seeds(v: &mut Value) {
 /// Runs `workflow` on the local ComfyUI. Returns the file bytes and its extension.
 pub async fn generate(st: &AppState, workflow: &Value, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync)) -> Result<(Vec<u8>, String), String> {
     start(st).await?;
-    let c = reqwest::Client::new();
-    let base = format!("http://127.0.0.1:{PORT}");
+    generate_at(&format!("http://127.0.0.1:{PORT}"), None, workflow, cancel, tick).await
+}
+
+/// Same, against any ComfyUI (a rented Vast card: `token` is sent as a bearer token).
+pub async fn generate_at(base: &str, token: Option<&str>, workflow: &Value, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync)) -> Result<(Vec<u8>, String), String> {
+    let c = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|e| e.to_string())?;
+    let auth = |rb: reqwest::RequestBuilder| match token { Some(t) => rb.bearer_auth(t), None => rb };
     let mut workflow = workflow.clone();
     randomize_seeds(&mut workflow);
-    let r = c.post(format!("{base}/prompt")).json(&json!({"prompt": workflow, "client_id": uuid::Uuid::new_v4().to_string()})).send().await.map_err(|e| e.to_string())?;
+    let r = auth(c.post(format!("{base}/prompt"))).json(&json!({"prompt": workflow, "client_id": uuid::Uuid::new_v4().to_string()})).send().await.map_err(|e| e.to_string())?;
     let status = r.status();
     let body: Value = r.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
@@ -572,14 +577,14 @@ pub async fn generate(st: &AppState, workflow: &Value, cancel: &AtomicBool, tick
     let t0 = Instant::now();
     loop {
         if cancel.load(Ordering::Relaxed) {
-            let _ = c.post(format!("{base}/interrupt")).send().await;
+            let _ = auth(c.post(format!("{base}/interrupt"))).send().await;
             return Err("cancelled".into());
         }
         tick(t0.elapsed().as_secs());
         if t0.elapsed() > Duration::from_secs(60 * 60) {
             return Err("Generation took longer than an hour.".into());
         }
-        if let Ok(r) = c.get(format!("{base}/history/{id}")).send().await {
+        if let Ok(r) = auth(c.get(format!("{base}/history/{id}"))).send().await {
             if let Ok(h) = r.json::<Value>().await {
                 if let Some(e) = h.get(&id) {
                     if e["status"]["status_str"] == "error" {
@@ -587,8 +592,7 @@ pub async fn generate(st: &AppState, workflow: &Value, cancel: &AtomicBool, tick
                         return Err(format!("ComfyUI error: {msg}"));
                     }
                     if let Some((name, sub, ty)) = find_output(e) {
-                        let bytes = c
-                            .get(format!("{base}/view"))
+                        let bytes = auth(c.get(format!("{base}/view")))
                             .query(&[("filename", &name), ("subfolder", &sub), ("type", &ty)])
                             .send()
                             .await

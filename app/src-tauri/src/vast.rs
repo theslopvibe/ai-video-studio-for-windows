@@ -396,6 +396,60 @@ impl Vast {
         .map(|_| ())
     }
 
+    /// Cheapest suitable machine for one GPU model: (offer id, $/hour). Needs a big disk and a fast download link.
+    pub async fn find_offers(&self, key: &str, gpu: &str, disk_gb: f64) -> Result<Vec<(i64, f64)>, String> {
+        let v = self
+            .console_send(
+                reqwest::Method::POST,
+                key,
+                "/api/v0/bundles/",
+                json!({
+                    "limit": 40, "type": "ondemand",
+                    "verified": {"eq": true}, "rentable": {"eq": true}, "rented": {"eq": false},
+                    "num_gpus": {"eq": 1}, "gpu_name": {"eq": gpu},
+                    "disk_space": {"gte": disk_gb},
+                    "inet_down": {"gte": 400},
+                    "reliability": {"gte": 0.97},
+                    "compute_cap": {"gte": 750}, "cuda_max_good": {"gte": 12.9},
+                    "direct_port_count": {"gte": 2},
+                    "order": [["dph_total", "asc"]]
+                }),
+            )
+            .await?;
+        // not in China: HuggingFace (where the models come from) is blocked or very slow there
+        Ok(v["offers"].as_array().cloned().unwrap_or_default().iter()
+            .filter(|o| !o["geolocation"].as_str().unwrap_or("").ends_with("CN"))
+            .filter_map(|o| Some((o["id"].as_i64()?, o["dph_total"].as_f64()?)))
+            .collect())
+    }
+
+    /// Rents the machine and starts the image there. Returns the new instance id.
+    pub async fn create_instance(&self, key: &str, offer: i64, body: Value) -> Result<i64, String> {
+        let v = self.console_send(reqwest::Method::PUT, key, &format!("/api/v0/asks/{offer}/"), body).await?;
+        v["new_contract"].as_i64().ok_or_else(|| format!("Vast did not return an instance id: {}", v.to_string().chars().take(200).collect::<String>()))
+    }
+
+    /// Full JSON of every instance of the account (ports, ip, status, label).
+    pub async fn instances_raw(&self, key: &str) -> Result<Vec<Value>, String> {
+        let v = self.console_get(key, "/api/v1/instances/").await?;
+        Ok(v.get("instances").cloned().unwrap_or(v).as_array().cloned().unwrap_or_default())
+    }
+
+    /// Last lines of the instance's log (only works while the container exists).
+    pub async fn instance_status_msg(&self, key: &str, id: i64) -> String {
+        self.instances_raw(key).await.unwrap_or_default().iter().find(|i| i["id"].as_i64() == Some(id)).and_then(|i| i["status_msg"].as_str().map(String::from)).unwrap_or_default()
+    }
+
+    pub async fn instance_logs(&self, key: &str, id: i64) -> String {
+        let Ok(v) = self.console_send(reqwest::Method::PUT, key, &format!("/api/v0/instances/request_logs/{id}/"), json!({"tail": "60"})).await else { return String::new() };
+        let Some(url) = v["result_url"].as_str() else { return String::new() };
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        match self.api.get(url).send().await {
+            Ok(r) => r.text().await.unwrap_or_default().chars().rev().take(1500).collect::<Vec<_>>().into_iter().rev().collect(),
+            Err(_) => String::new(),
+        }
+    }
+
     /// Live marketplace prices, grouped by GPU model ($/hour, single-GPU machines).
     pub async fn gpu_offers(&self, key: &str, min_vram_gb: f64) -> Result<Vec<GpuOffer>, String> {
         let v = self

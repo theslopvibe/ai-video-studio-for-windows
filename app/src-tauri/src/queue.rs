@@ -37,7 +37,7 @@ pub fn slug(s: &str) -> String {
     t.chars().take(40).collect()
 }
 
-fn fmt_secs(s: u64) -> String {
+pub fn fmt_secs(s: u64) -> String {
     format!("{}:{:02}", s / 60, s % 60)
 }
 
@@ -116,6 +116,11 @@ async fn run_job(app: &AppHandle, job: &Job, cancel: &Arc<AtomicBool>) -> Result
     }
     if local {
         return run_local(app, job, &workflow, &params, cancel, wf.meta.name_en.clone(), t0).await;
+    }
+
+    if st.db.kv_get("vast_mode").as_deref() != Some("serverless") {
+        let pack = if wf.meta.pack.is_empty() { vec![] } else { vec![wf.meta.pack.clone()] };
+        return run_card(app, job, &workflow, &params, &pack, cancel, wf.meta.name_en.clone(), t0).await;
     }
 
     // Card choice: this video's own pick, else the global selection. Only touch Vast when it changed.
@@ -281,11 +286,38 @@ async fn run_local(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<St
     let (a, id) = (app.clone(), job.id.clone());
     let tick = move |s: u64| set(&a, &id, "generating", &format!("Generating on this PC… {}", fmt_secs(s)), "");
     let (bytes, ext) = crate::local::generate(&st, workflow, cancel, &tick).await?;
+    save_result(app, job, params, &wf_name, t0, bytes, ext).await
+}
+
+/// Rented Vast card: starts one if none is ready (this takes minutes the first time), then runs the workflow on it.
+async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<String, Value>, packs: &[String], cancel: &Arc<AtomicBool>, wf_name: String, t0: Instant) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let gpu = params.get("gpu").and_then(|v| v.as_str()).filter(|g| !g.is_empty()).map(String::from)
+        .or_else(|| st.db.kv_get("gpu_selection").and_then(|g| g.split(',').find(|x| !x.is_empty()).map(String::from)))
+        .unwrap_or_else(|| "RTX 4090".into());
+    let (a, id) = (app.clone(), job.id.clone());
+    let say = move |m: &str| set(&a, &id, "routing", m, "");
+    let card = crate::card::ensure(&st, &gpu, packs, cancel, &say).await?;
+    let (a, id) = (app.clone(), job.id.clone());
+    let tick = move |s: u64| set(&a, &id, "generating", &format!("Generating on the rented card… {}", fmt_secs(s)), "");
+    let mut wf = workflow.clone();
+    crate::local::randomize_seeds(&mut wf);
+    let (bytes, ext) = crate::local::generate_at(&card.base, Some(&card.token), &wf, cancel, &tick).await?;
+    save_result(app, job, params, &wf_name, t0, bytes, ext).await
+}
+
+async fn save_result(app: &AppHandle, job: &Job, params: &Map<String, Value>, wf_name: &str, t0: Instant, bytes: Vec<u8>, ext: String) -> Result<(), String> {
+    let st = app.state::<AppState>();
     set(app, &job.id, "downloading", "Saving…", "");
     let path = output_path(&st, job, params, &ext)?;
     tokio::fs::write(&path, bytes).await.map_err(|e| e.to_string())?;
     if st.db.projects().map_err(|e| e.to_string())?.into_iter().find(|p| p.id == job.project_id).map(|p| p.sidecar).unwrap_or(true) {
-        let info = format!("{}\n\nworkflow: {wf_name}\nparams: {}\ncreated: {}\n", job.prompt, job.params, chrono::Local::now().to_rfc3339());
+        let info = format!("{}
+
+workflow: {wf_name}
+params: {}
+created: {}
+", job.prompt, job.params, chrono::Local::now().to_rfc3339());
         let _ = tokio::fs::write(path.with_extension("txt"), info).await;
     }
     st.db.set_job_file(&job.id, &path.to_string_lossy()).ok();

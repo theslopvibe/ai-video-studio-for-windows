@@ -1,4 +1,5 @@
 mod anthropic;
+mod card;
 mod api;
 mod chat;
 mod hf;
@@ -77,7 +78,7 @@ fn e(x: impl std::fmt::Display) -> String {
 }
 
 /// Bundled catalog (models.json) plus the user's custom packs added from HuggingFace.
-fn catalog(st: &AppState) -> Vec<Value> {
+pub fn catalog(st: &AppState) -> Vec<Value> {
     let mut cat: Vec<Value> = serde_json::from_str(include_str!("../models.json")).unwrap_or_default();
     let custom: Vec<Value> = st.db.kv_get("custom_models").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     cat.extend(custom);
@@ -579,7 +580,7 @@ pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
     for f in st.cancels.lock().unwrap().values() { f.store(true, Ordering::Relaxed); }
     let list = st.vast.instances(&key).await?;
     // only this app's own cards (workers of its endpoint); other cards on the account are never touched
-    let ours = |i: &vast::InstanceInfo| i.label.starts_with(&format!("{endpoint}:"));
+    let ours = |i: &vast::InstanceInfo| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL;
     let mut n = 0;
     for i in list.iter().filter(|i| ours(i) && (id == 0 || i.id == id)) {
         st.vast.destroy_instance(&key, i.id).await?;
@@ -608,12 +609,37 @@ pub fn warm_state() -> &'static str {
 }
 
 pub async fn run_warm(app: &AppHandle) -> R<()> {
+    run_warm_with(app, None, None).await
+}
+
+/// `workflow`: the mode whose models the card should hold; `gpu`: exact Vast GPU name. Both default to the saved choices.
+pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Option<String>) -> R<()> {
     use tauri::Emitter;
     let st = app.state::<AppState>();
     if WARM_RUNNING.swap(true, Ordering::SeqCst) { return Err("Already preparing a card.".into()); }
     WARM_CANCEL.store(false, Ordering::SeqCst);
     let res = async {
         let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+        if st.db.kv_get("vast_mode").as_deref() != Some("serverless") {
+            // a card of our own: GPU from the selection (default RTX 4090), models of the last used mode (default Wan 2.2 image→video)
+            let gpu = gpu.clone().or_else(|| st.db.kv_get("gpu_selection").and_then(|g| g.split(',').find(|x| !x.is_empty()).map(String::from))).unwrap_or_else(|| "RTX 4090".into());
+            let (wfs, _) = st.load_workflows();
+            let pack = workflow.clone().or_else(|| st.db.kv_get("last_workflow")).and_then(|id| wfs.iter().find(|w| w.meta.id == id).map(|w| w.meta.pack.clone())).filter(|p| !p.is_empty()).unwrap_or_else(|| "wan22-i2v".into());
+            let cancel = AtomicBool::new(false);
+            let (a2, t0) = (app.clone(), std::time::Instant::now());
+            let say = move |m: &str| { let _ = a2.emit("warmup", WarmEvent { state: "working".into(), text: m.into(), secs: t0.elapsed().as_secs() }); };
+            let packs = [pack];
+            let fut = card::ensure(&st, &gpu, &packs, &cancel, &say);
+            tokio::pin!(fut);
+            loop {
+                tokio::select! {
+                    r = &mut fut => { r?; return Ok(true); }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
+                        if WARM_CANCEL.load(Ordering::SeqCst) { cancel.store(true, Ordering::SeqCst); }
+                    }
+                }
+            }
+        }
         let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
         let want: Vec<String> = st.db.kv_get("gpu_selection").unwrap_or_default().split(',').filter(|x| !x.is_empty()).map(String::from).collect();
         if !want.is_empty() && st.db.kv_get("gpu_applied").unwrap_or_default() != want.join(",") {
@@ -661,7 +687,7 @@ pub async fn auto_close_loop(app: AppHandle) {
         let Some(key) = secrets::get("vast_api_key") else { continue };
         let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
         if let Ok(list) = st.vast.instances(&key).await {
-            if list.iter().any(|i| i.label.starts_with(&format!("{endpoint}:"))) {
+            if list.iter().any(|i| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL) {
                 log::info(&format!("auto-close: nothing happened for {limit} min, closing the card(s)"));
                 if let Ok(m) = stop_vast(&st, 0).await {
                     use tauri::Emitter;
