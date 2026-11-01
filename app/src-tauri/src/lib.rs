@@ -87,7 +87,7 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 
 const SETTING_KEYS: &[&str] = &[
     "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project",
-    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "auto_close_min",
+    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "auto_close_min", "card_models",
 ];
 
 #[derive(Serialize)]
@@ -622,7 +622,7 @@ pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Optio
         let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
         if st.db.kv_get("vast_mode").as_deref() != Some("serverless") {
             // a card of our own: GPU from the selection (default RTX 4090), models of the last used mode (default Wan 2.2 image→video)
-            let gpu = gpu.clone().or_else(|| st.db.kv_get("gpu_selection").and_then(|g| g.split(',').find(|x| !x.is_empty()).map(String::from))).unwrap_or_else(|| "RTX 4090".into());
+            let gpu = gpu.clone().unwrap_or_default();
             let (wfs, _) = st.load_workflows();
             let pack = workflow.clone().or_else(|| st.db.kv_get("last_workflow")).and_then(|id| wfs.iter().find(|w| w.meta.id == id).map(|w| w.meta.pack.clone())).filter(|p| !p.is_empty()).unwrap_or_else(|| "wan22-i2v".into());
             let cancel = AtomicBool::new(false);

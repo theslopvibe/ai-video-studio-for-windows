@@ -148,6 +148,10 @@
       <button onclick={() => closeCard(0)} disabled={!cards?.length && warm?.state !== "working"}>{S.t("card_delete")}</button>
     </div>
     <div class="small dim" style="margin-top:8px">{S.t("card_fav")}: <b>{(S.settings.gpu_selection ?? "").split(",").filter(Boolean).join(", ") || S.t("card_fav_auto")}</b> · <button class="ghost small" onclick={() => (S.page = "gpu")}>{S.t("card_change")}</button></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_models")}</span>
+      <select value={S.settings.card_models ?? "auto"} onchange={(e) => S.set("card_models", e.currentTarget.value)} style="width:auto">
+        <option value="auto">{S.t("card_models_auto")}</option><option value="both">{S.t("card_models_both")}</option><option value="wan">{S.t("card_models_wan")}</option><option value="flux">{S.t("card_models_flux")}</option>
+      </select></div>
     <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_auto")}</span>
       <select value={S.settings.auto_close_min ?? "10"} onchange={(e) => S.set("auto_close_min", e.currentTarget.value)} style="width:auto">
         <option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="0">{S.t("card_never")}</option>

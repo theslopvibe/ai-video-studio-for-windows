@@ -293,8 +293,7 @@ async fn run_local(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<St
 async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<String, Value>, packs: &[String], cancel: &Arc<AtomicBool>, wf_name: String, t0: Instant) -> Result<(), String> {
     let st = app.state::<AppState>();
     let gpu = params.get("gpu").and_then(|v| v.as_str()).filter(|g| !g.is_empty()).map(String::from)
-        .or_else(|| st.db.kv_get("gpu_selection").and_then(|g| g.split(',').find(|x| !x.is_empty()).map(String::from)))
-        .unwrap_or_else(|| "RTX 4090".into());
+        .unwrap_or_default();
     let (a, id) = (app.clone(), job.id.clone());
     let say = move |m: &str| set(&a, &id, "routing", m, "");
     let card = crate::card::ensure(&st, &gpu, packs, cancel, &say).await?;

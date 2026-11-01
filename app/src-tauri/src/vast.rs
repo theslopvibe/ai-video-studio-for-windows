@@ -397,13 +397,17 @@ impl Vast {
     }
 
     /// Cheapest suitable machine for one GPU model: (offer id, $/hour). Needs a big disk and a fast download link.
-    pub async fn find_offers(&self, key: &str, gpu: &str, disk_gb: f64) -> Result<Vec<(i64, f64)>, String> {
-        // fast links first (the model download is most of the waiting time); slower ones only if none are free
-        let fast = self.find_offers_min(key, gpu, disk_gb, 1000.0).await?;
-        if !fast.is_empty() {
-            return Ok(fast);
+    /// Machines of the given GPU models, cheapest first, only with a download link of 1 Gbit/s or more
+    /// (the model download is most of the waiting time and the card is billed meanwhile). Returns (offer, USD/h, GPU name).
+    pub async fn find_offers(&self, key: &str, gpus: &[String], disk_gb: f64) -> Result<Vec<(i64, f64, String)>, String> {
+        let mut all = vec![];
+        for g in gpus {
+            for (id, dph) in self.find_offers_min(key, g, disk_gb, 1000.0).await? {
+                all.push((id, dph, g.clone()));
+            }
         }
-        self.find_offers_min(key, gpu, disk_gb, 400.0).await
+        all.sort_by(|a, b| a.1.total_cmp(&b.1));
+        Ok(all)
     }
 
     async fn find_offers_min(&self, key: &str, gpu: &str, disk_gb: f64, min_mbps: f64) -> Result<Vec<(i64, f64)>, String> {

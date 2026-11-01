@@ -6,6 +6,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub const LABEL: &str = "aivs-card";
+const WAN_PACK: &str = "wan22-i2v";
+const FLUX_PACK: &str = "flux2-klein-4b";
+/// Cards with 16 GB or more, tried by price, for models that are small (FLUX and similar).
+const CHEAP_GPUS: &[&str] = &["RTX 3090", "RTX 4080", "RTX 4080S", "RTX 4070S Ti", "RTX 4090"];
 const DISK_GB: f64 = 110.0;
 const IMAGE: &str = "vastai/comfy:v0.43.0-cuda-12.9-py312";
 
@@ -111,21 +115,46 @@ async fn probe(c: &reqwest::Client, base: &str, token: &str, node: &str) -> bool
 pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &AtomicBool, say: &(dyn Fn(&str) + Sync)) -> Result<Card, String> {
     let _guard = LOCK.lock().await;
     let key = secrets::get("vast_api_key").ok_or("Missing Vast API key (Settings).")?;
-    let gpu = if gpu.is_empty() { "RTX 4090" } else { gpu };
+    if pack_ids.is_empty() {
+        return Err("This mode has no model pack to install on a card.".into());
+    }
     set_state(false, "Starting…");
     let say_outer = say;
     let say = |m: &str| {
         set_state(false, m);
         say_outer(m)
     };
-    let want_packs = pack_ids.join(",");
+    // what the user wants on the card: only the mode's models (auto), Wan, FLUX or both at once
+    let mut ids: Vec<String> = pack_ids.to_vec();
+    let extra: &[&str] = match st.db.kv_get("card_models").as_deref() {
+        Some("wan") => &[WAN_PACK],
+        Some("flux") => &[FLUX_PACK],
+        Some("both") => &[WAN_PACK, FLUX_PACK],
+        _ => &[],
+    };
+    for e in extra {
+        if !ids.iter().any(|i| i == e) {
+            ids.push(e.to_string());
+        }
+    }
+    let packs = packs_for(st, &ids);
+    // a big model (Wan) needs the strong card; a card for small models only can be a cheaper one
+    let big = packs.iter().any(|p| p["vram_gb"].as_f64().unwrap_or(0.0) > 16.0);
+    let gpus: Vec<String> = if !gpu.is_empty() {
+        vec![gpu.to_string()]
+    } else if big {
+        vec![st.db.kv_get("gpu_selection").and_then(|g| g.split(',').find(|x| !x.is_empty()).map(String::from)).unwrap_or_else(|| "RTX 4090".into())]
+    } else {
+        CHEAP_GPUS.iter().map(|s| s.to_string()).collect()
+    };
+    let want_packs = ids.join(",");
     let mut ours: Vec<Value> = st.vast.instances_raw(&key).await?.into_iter().filter(|i| i["label"] == LABEL).collect();
     let token_saved = st.db.kv_get("card_token").unwrap_or_default();
     let cert_saved = st.db.kv_get("card_cert").unwrap_or_default();
     let have_packs = st.db.kv_get("card_packs").unwrap_or_default();
     // reuse only a card that has the right GPU, the needed models and a token we know
     let reusable = ours.iter().position(|i| {
-        i["gpu_name"].as_str() == Some(gpu) && !token_saved.is_empty() && !cert_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
+        gpus.iter().any(|g| Some(g.as_str()) == i["gpu_name"].as_str()) && !token_saved.is_empty() && !cert_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
     });
     let mut id = 0i64;
     if let Some(ix) = reusable {
@@ -141,27 +170,23 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
     let token = if id != 0 { token_saved } else { rand_token() };
     // a new token and a new certificate for every new card
     let (cert_pem, key_pem) = if id != 0 { (cert_saved, String::new()) } else { gen_cert()? };
-    let packs = packs_for(st, pack_ids);
-    let mut offers: Vec<(i64, f64)> = vec![];
+    let mut offers: Vec<(i64, f64, String)> = vec![];
     let mut tries = 0usize;
     // rents the next machine of the list; some machines cannot pull the image, then the next one is tried
     macro_rules! rent {
         () => {{
-            if packs.is_empty() {
-                return Err("This mode has no model pack to install on a card.".into());
-            }
             if offers.is_empty() {
-                say(&format!("Looking for a {gpu}…"));
-                offers = st.vast.find_offers(&key, gpu, DISK_GB).await?;
+                say("Looking for a card with a fast link…");
+                offers = st.vast.find_offers(&key, &gpus, DISK_GB).await?;
                 if offers.is_empty() {
-                    return Err(format!("No {gpu} is available right now with enough disk and a fast link. Try another card."));
+                    return Err(format!("No {} is available right now with enough disk and a 1 Gbit/s link. Try again in a few minutes or pick another card.", gpus.join(" / ")));
                 }
             }
             tries += 1;
             if tries > 4 {
                 return Err("Four different machines failed to start. Try again in a few minutes.".into());
             }
-            let (offer, dph) = offers.remove(0);
+            let (offer, dph, gpu) = offers.remove(0);
             say(&format!("Renting a {gpu} (~{dph:.2} USD/hour)…"));
             let env = json!({ "-p 8188:8188": "1" });
             let new_id = st.vast.create_instance(&key, offer, json!({ "image": IMAGE, "env": env, "disk": DISK_GB, "label": LABEL, "runtype": "ssh", "onstart": onstart(&packs, &token, &cert_pem, &key_pem) })).await?;
