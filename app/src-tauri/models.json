@@ -118,6 +118,31 @@
   ]
  },
  {
+  "id": "flux2-klein-4b",
+  "name": "FLUX.2 [klein] 4B fp8",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "vram_gb": 12,
+  "size_gb": 12.4,
+  "desc_el": "Γρήγορο μοντέλο εικόνας (4 steps), μικρό και φθηνό στο cloud.",
+  "desc_en": "Fast image model (4 steps), small and cheap to run in the cloud.",
+  "in_template": false,
+  "files": [
+   {
+    "dir": "diffusion_models",
+    "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors"
+   },
+   {
+    "dir": "text_encoders",
+    "url": "https://huggingface.co/Comfy-Org/flux2-klein-4B/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
+   }
+  ]
+ },
+ {
   "id": "sdxl-base",
   "name": "Stable Diffusion XL 1.0 base",
   "kind": "image",

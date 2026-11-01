@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.10
+
+- New: Text → Image with FLUX.2 klein 4B (4 steps, 12 GB card). Small model pack (about 12 GB, fp8) so the rented card starts fast and costs little. Apache-2.0.
+
 ## 0.7.9
 
 - Fixed: Wan 2.2 text-to-video (Fast and Quality) failed instantly with "This mode has no model pack to install on a card". Both modes now know their model pack, so the Vast card can install it.

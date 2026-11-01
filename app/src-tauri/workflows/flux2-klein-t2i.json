@@ -1,0 +1,192 @@
+{
+ "meta": {
+  "id": "flux2-klein-t2i",
+  "name_en": "Text → Image: FLUX.2 klein 4B",
+  "name_el": "Κείμενο → Εικόνα: FLUX.2 klein 4B",
+  "desc_en": "Fast and cheap, 4 steps, small model (4B). Wants a 12 GB card. Needs “FLUX.2 [klein] 4B fp8” installed.",
+  "desc_el": "Γρήγορο και φθηνό, 4 βήματα, μικρό μοντέλο (4B). Θέλει κάρτα 12 GB. Χρειάζεται το «FLUX.2 [klein] 4B fp8».",
+  "kind": "t2i",
+  "models": [
+   "flux-2-klein-4b-fp8",
+   "qwen_3_4b",
+   "flux2-vae"
+  ],
+  "pack": "flux2-klein-4b",
+  "vram_gb": 12,
+  "est_sec": 15,
+  "priority": 190,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 16
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 16
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__"
+   }
+  ]
+ },
+ "workflow": {
+  "1": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "flux-2-klein-4b-fp8.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_3_4b.safetensors",
+    "type": "flux2",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "flux2-vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "5": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "CFGGuider",
+   "inputs": {
+    "cfg": 1,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "4",
+     0
+    ],
+    "negative": [
+     "5",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "KSamplerSelect",
+   "inputs": {
+    "sampler_name": "euler"
+   }
+  },
+  "8": {
+   "class_type": "Flux2Scheduler",
+   "inputs": {
+    "steps": 4,
+    "width": "{{width}}",
+    "height": "{{height}}"
+   }
+  },
+  "9": {
+   "class_type": "RandomNoise",
+   "inputs": {
+    "noise_seed": "{{seed}}"
+   }
+  },
+  "10": {
+   "class_type": "EmptyFlux2LatentImage",
+   "inputs": {
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "batch_size": 1
+   }
+  },
+  "11": {
+   "class_type": "SamplerCustomAdvanced",
+   "inputs": {
+    "noise": [
+     "9",
+     0
+    ],
+    "guider": [
+     "6",
+     0
+    ],
+    "sampler": [
+     "7",
+     0
+    ],
+    "sigmas": [
+     "8",
+     0
+    ],
+    "latent_image": [
+     "10",
+     0
+    ]
+   }
+  },
+  "12": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "11",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "13": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "aivs",
+    "images": [
+     "12",
+     0
+    ]
+   }
+  }
+ }
+}
