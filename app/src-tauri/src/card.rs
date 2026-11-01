@@ -129,8 +129,8 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
     let extra: &[&str] = match st.db.kv_get("card_models").as_deref() {
         Some("wan") => &[WAN_PACK],
         Some("flux") => &[FLUX_PACK],
-        Some("both") => &[WAN_PACK, FLUX_PACK],
-        _ => &[],
+        Some("auto") => &[],
+        _ => &[WAN_PACK, FLUX_PACK],
     };
     for e in extra {
         if !ids.iter().any(|i| i == e) {

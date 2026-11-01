@@ -149,7 +149,7 @@
     </div>
     <div class="small dim" style="margin-top:8px">{S.t("card_fav")}: <b>{(S.settings.gpu_selection ?? "").split(",").filter(Boolean).join(", ") || S.t("card_fav_auto")}</b> · <button class="ghost small" onclick={() => (S.page = "gpu")}>{S.t("card_change")}</button></div>
     <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_models")}</span>
-      <select value={S.settings.card_models ?? "auto"} onchange={(e) => S.set("card_models", e.currentTarget.value)} style="width:auto">
+      <select value={S.settings.card_models ?? "both"} onchange={(e) => S.set("card_models", e.currentTarget.value)} style="width:auto">
         <option value="auto">{S.t("card_models_auto")}</option><option value="both">{S.t("card_models_both")}</option><option value="wan">{S.t("card_models_wan")}</option><option value="flux">{S.t("card_models_flux")}</option>
       </select></div>
     <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_auto")}</span>

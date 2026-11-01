@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.12
+
+- "Models on the card" now starts as "Wan + FLUX together": one card holds both, so images and clips work without changing anything. Pick another option on the Models page to save money.
+
 ## 0.7.11
 
 - New choice "Models on the card" (Models page): only what each job needs, Wan + FLUX together on one card, Wan only, or FLUX only. With Wan the strong card is used (RTX 4090 by default); with FLUX only the cheapest card of 16 GB or more is rented (RTX 3090 was about 0.17 USD/h).
