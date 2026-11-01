@@ -22,6 +22,7 @@ pub fn build_script(packs: &[Value], include_local_node: bool) -> String {
         s.push_str("\nPYEOF\n");
     }
     let mut seen = std::collections::HashSet::new();
+    let mut retry = String::new();
     for m in packs {
         let title: String = m["name"].as_str().unwrap_or("").chars().filter(|c| !c.is_control()).collect();
         s.push_str(&format!("# {title}\n"));
@@ -50,12 +51,16 @@ pub fn build_script(packs: &[Value], include_local_node: bool) -> String {
                     _ => format!("$M/{dir}"),
                 };
                 s.push_str(&format!("dl \"{url}\" \"{target}/{file}\" &\n"));
+                retry.push_str(&format!("dl \"{url}\" \"{target}/{file}\"\n"));
             }
         }
     }
     // all files download side by side (one connection alone is often throttled), then wait for every one
     s.push_str("wait
 ");
+    // a download that failed in the parallel round (dl skips files that are already complete) is tried again alone, twice
+    s.push_str(&retry);
+    s.push_str(&retry);
     s
 }
 

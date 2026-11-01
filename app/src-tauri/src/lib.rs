@@ -633,7 +633,7 @@ pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Optio
             tokio::pin!(fut);
             loop {
                 tokio::select! {
-                    r = &mut fut => { r?; return Ok(true); }
+                    r = &mut fut => { let c = r?; card::notify_ready(app, &c); return Ok(true); }
                     _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
                         if WARM_CANCEL.load(Ordering::SeqCst) { cancel.store(true, Ordering::SeqCst); }
                     }
@@ -1147,6 +1147,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;

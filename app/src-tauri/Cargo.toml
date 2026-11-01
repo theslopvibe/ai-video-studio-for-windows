@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.7.13"
+version = "0.7.14"
 description = "AI Video Studio For Windows"
 authors = ["AI Video Studio For Windows"]
 edition = "2021"
@@ -32,6 +32,7 @@ base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-notification = "2"
 
 [profile.release]
 codegen-units = 1

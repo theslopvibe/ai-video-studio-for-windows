@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.14
+
+- A Windows notification appears when the cloud card is ready and its models are downloaded.
+- The app now checks that the card really has the model files of the job (ComfyUI lists them) before sending work. A card without them is replaced (old card) or closed with a clear message (new card whose download failed), instead of failing every job.
+- Downloads that failed in the first round are tried again one by one on the card.
+- Vast "429 Too Many Requests": the app waits for the time Vast asks and tries again, so many jobs sent at once no longer fail.
+
 ## 0.7.13
 
 - New: Text → Image with FLUX.3 klein (int8, 4-16 steps, about 11 GB pack, FLUX Kommunity License). The "FLUX" in "Models on the card" now means FLUX.3 klein, so Wan + FLUX.3 sit on the same card. If you have your own workflow with the id flux3-klein-t2i, the app shows a message: delete it, the built-in one has the model pack.

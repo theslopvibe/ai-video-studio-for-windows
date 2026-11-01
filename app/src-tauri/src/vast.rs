@@ -183,9 +183,19 @@ impl Vast {
     }
 
     async fn console_get(&self, key: &str, path: &str) -> Result<Value, String> {
-        let r = self.api.get(format!("{}{path}", console_url())).bearer_auth(key).send().await.map_err(err)?;
-        let code = r.status();
-        let text = r.text().await.map_err(err)?;
+        let mut tries = 0;
+        let (code, text) = loop {
+            let r = self.api.get(format!("{}{path}", console_url())).bearer_auth(key).send().await.map_err(err)?;
+            let code = r.status();
+            let wait = retry_after(&r);
+            let text = r.text().await.map_err(err)?;
+            if code.as_u16() == 429 && tries < 6 {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_secs_f64(wait.or_else(|| body_retry_after(&text)).unwrap_or(2.0).clamp(1.0, 15.0))).await;
+                continue;
+            }
+            break (code, text);
+        };
         crate::log::info(&format!("vast GET {path} → HTTP {code}{}", if code.is_success() { String::new() } else { format!(": {}", text.chars().take(200).collect::<String>()) }));
         if code.as_u16() == 401 || code.as_u16() == 403 {
             return Err("Vast: invalid API key".into());
@@ -198,16 +208,27 @@ impl Vast {
 
     async fn console_send(&self, method: reqwest::Method, key: &str, path: &str, body: Value) -> Result<Value, String> {
         let method_name = method.to_string();
-        let r = self
-            .api
-            .request(method, format!("{}{path}", console_url()))
-            .bearer_auth(key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(err)?;
-        let code = r.status();
-        let text = r.text().await.map_err(err)?;
+        let mut tries = 0;
+        let (code, text) = loop {
+            let r = self
+                .api
+                .request(method.clone(), format!("{}{path}", console_url()))
+                .bearer_auth(key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(err)?;
+            let code = r.status();
+            let wait = retry_after(&r);
+            let text = r.text().await.map_err(err)?;
+            // Vast allows few requests at once: wait as long as it says and ask again
+            if code.as_u16() == 429 && tries < 6 {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_secs_f64(wait.or_else(|| body_retry_after(&text)).unwrap_or(2.0).clamp(1.0, 15.0))).await;
+                continue;
+            }
+            break (code, text);
+        };
         crate::log::info(&format!("vast {} {path} → HTTP {code}{}", method_name, if code.is_success() { String::new() } else { format!(": {}", text.chars().take(200).collect::<String>()) }));
         if !code.is_success() {
             return Err(format!("Vast HTTP {code}: {}", text.chars().take(300).collect::<String>()));
@@ -556,4 +577,14 @@ mod tests {
         assert_eq!(r, "verified=true rentable=true rented=false gpu_name in [RTX_4090,RTX_5090]");
         assert_eq!(merge_gpu_filter("", &[]), "verified=true rentable=true rented=false");
     }
+}
+
+/// Seconds from the Retry-After header of a 429 answer.
+fn retry_after(r: &reqwest::Response) -> Option<f64> {
+    r.headers().get("retry-after")?.to_str().ok()?.trim().parse::<f64>().ok()
+}
+
+/// Seconds from the "retry_after" field Vast puts in the body of a 429 answer.
+fn body_retry_after(text: &str) -> Option<f64> {
+    serde_json::from_str::<Value>(text).ok()?.get("retry_after")?.as_f64()
 }

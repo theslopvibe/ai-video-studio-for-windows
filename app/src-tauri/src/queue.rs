@@ -297,6 +297,7 @@ async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<Str
     let (a, id) = (app.clone(), job.id.clone());
     let say = move |m: &str| set(&a, &id, "routing", m, "");
     let card = crate::card::ensure(&st, &gpu, packs, cancel, &say).await?;
+    crate::card::notify_ready(app, &card);
     {
         use tauri::Emitter;
         let _ = app.emit("warmup", serde_json::json!({ "state": "ready", "text": "", "secs": 0 }));

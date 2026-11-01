@@ -16,6 +16,8 @@ const IMAGE: &str = "vastai/comfy:v0.43.0-cuda-12.9-py312";
 static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub struct Card {
+    /// true when this call rented the card (the models were just installed), false when an existing card was reused
+    pub fresh: bool,
     pub id: i64,
     pub base: String,
     pub token: String,
@@ -111,6 +113,42 @@ async fn probe(c: &reqwest::Client, base: &str, token: &str, node: &str) -> bool
     r.status().is_success() && r.json::<Value>().await.map(|v| v.get(node).is_some()).unwrap_or(false)
 }
 
+/// Windows notification: the new card is up and all its models are downloaded.
+pub fn notify_ready(app: &tauri::AppHandle, card: &Card) {
+    use tauri_plugin_notification::NotificationExt;
+    if !card.fresh {
+        return;
+    }
+    let _ = app.notification().builder().title("AI Video Studio").body("The cloud card is ready and the models are downloaded. You can generate now.").show();
+}
+
+/// The model files of the packs that the card does not have (ComfyUI lists each models folder).
+async fn missing_files(c: &reqwest::Client, base: &str, token: &str, packs: &[Value]) -> Vec<String> {
+    let mut missing = vec![];
+    let mut seen: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for p in packs {
+        for f in p["files"].as_array().cloned().unwrap_or_default() {
+            let (dir, url) = (f["dir"].as_str().unwrap_or(""), f["url"].as_str().unwrap_or(""));
+            if dir.starts_with('@') || dir.is_empty() {
+                continue;
+            }
+            let file = url.rsplit('/').next().unwrap_or("").to_string();
+            if !seen.contains_key(dir) {
+                let list = match c.get(format!("{base}/models/{dir}")).bearer_auth(token).timeout(Duration::from_secs(10)).send().await {
+                    Ok(r) if r.status().is_success() => r.json::<Vec<String>>().await.unwrap_or_default(),
+                    // cannot ask: do not block the card on a question ComfyUI did not answer
+                    _ => vec![file.clone()],
+                };
+                seen.insert(dir.to_string(), list);
+            }
+            if !seen[dir].iter().any(|n| n == &file) {
+                missing.push(format!("{dir}/{file}"));
+            }
+        }
+    }
+    missing
+}
+
 /// Returns a ready card, creating one if none exists. `say` receives short progress texts.
 pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &AtomicBool, say: &(dyn Fn(&str) + Sync)) -> Result<Card, String> {
     let _guard = LOCK.lock().await;
@@ -157,7 +195,9 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
         gpus.iter().any(|g| Some(g.as_str()) == i["gpu_name"].as_str()) && !token_saved.is_empty() && !cert_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
     });
     let mut id = 0i64;
+    let mut reused = false;
     if let Some(ix) = reusable {
+        reused = true;
         id = ours.remove(ix)["id"].as_i64().unwrap_or(0);
     }
     for o in ours {
@@ -200,6 +240,7 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
     if id == 0 {
         id = rent!();
     }
+    let mut fresh = !reused;
     // wait until ComfyUI answers with our node (it restarts after the models are downloaded)
     let mut t0 = Instant::now();
     let mut last_logs = Instant::now();
@@ -226,9 +267,25 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
                 let base = format!("https://{HOST}:{port}");
                 let client = make_client(&cert_pem, &ip, &port)?;
                 if probe(&client, &base, &token, "AIVSSaveVideoBase64").await {
+                    // ComfyUI answers, but are the model files really there? (a failed download used to go unnoticed)
+                    let miss = missing_files(&client, &base, &token, &packs).await;
+                    if !miss.is_empty() {
+                        crate::log::info(&format!("card: {id} is up but lacks {}", miss.join(", ")));
+                        let logs = st.vast.instance_logs(&key, id).await;
+                        let _ = st.vast.destroy_instance(&key, id).await;
+                        if fresh {
+                            return Err(format!("The card started but these model files did not download: {}. The card was closed, so nothing keeps billing. Log end:\n{logs}", miss.join(", ")));
+                        }
+                        // an old card without the models we need: replace it
+                        say("The card is missing models, renting a new one…");
+                        id = rent!();
+                        fresh = true;
+                        t0 = Instant::now();
+                        continue;
+                    }
                     crate::log::info(&format!("card: {id} ready after {}s at {ip}:{port}", t0.elapsed().as_secs()));
                     set_state(true, "");
-                    return Ok(Card { id, base, token, client });
+                    return Ok(Card { fresh, id, base, token, client });
                 }
                 say(&format!("Card running, downloading the models… {}", crate::queue::fmt_secs(t0.elapsed().as_secs())));
                 if last_logs.elapsed() > Duration::from_secs(120) {
