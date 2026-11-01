@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.9
+
+- Fixed: Wan 2.2 text-to-video (Fast and Quality) failed instantly with "This mode has no model pack to install on a card". Both modes now know their model pack, so the Vast card can install it.
+
 ## 0.7.8
 
 - The connection to the rented card is now encrypted (TLS with a certificate made for each card and trusted only by the app), the token is compared in constant time, and every new card gets a new token and certificate.

@@ -12,6 +12,7 @@
    "wan2.2_t2v_high_noise_14B_fp8",
    "wan2.2_t2v_low_noise_14B_fp8"
   ],
+  "pack": "wan22-t2v",
   "vram_gb": 24,
   "est_sec": 240,
   "inputs": [
