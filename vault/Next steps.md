@@ -1,3 +1,5 @@
+> **2026-10-31 (end):** v0.7.8 released (GitHub, site, Desktop folder «Για τον Αντώνη»). Direct Vast card works (4 real Wan 2.2 i2v videos on RTX 4090), TLS + per-card token, ready signal, Settings «Connect to Claude» with .mcpb inside the installer. Next: (1) docker image with Wan models (measure image pull time first), (2) check the new Settings section visually and the update flow on Antonis' PC (he uses the .mcpb, extension 0.3.2), (3) optional «stop instead of delete» with cost warning / smaller disk, (4) real tests of the other packs on a card.
+
 > **2026-10-30:** το app είναι πλέον δημόσιο (https://github.com/theslopvibe/ai-video-studio-for-windows, MIT, Ko-fi https://ko-fi.com/slopvibe, developer theslopvibe.com). Τρέχον πλάνο: redesign Image/Video/Audio + 10 γλώσσες, audio/music, editor (OpenCut/ffmpeg), auto-update από GitHub, διαχείριση PR άλλων, σελίδα Pages με screenshots. Λεπτομέρειες: `memory.md` (κορυφή) και `ROADMAP.md`.
 
 ---
@@ -28,3 +30,8 @@ Vast key is stored in the app and works, but the account has **no endpoint `comf
 
 ## 2026-10-30: v0.7.0 done
 Signed auto-update (Settings > About > Check for updates), issue/PR templates. Next: test update flow with 0.7.1; real-hardware tests of tool packs; sha256 checks; screenshots page; Models/GPU/Logs redesign.
+
+## 2026-11-01 (0.7.9-0.7.11)
+- Δοκιμή σε πραγματική κάρτα: FLUX.2 klein pack/workflow, ρύθμιση «Μοντέλα στην κάρτα» (both / flux μόνο σε φθηνότερη GPU), t2v pack. Θέλει έγκριση κόστους.
+- Να μην κλείνει η κάρτα όταν λείπει pack και τρέχει δουλειά (ή να μπαίνει pack σε τρέχουσα κάρτα).
+- Επιβεβαίωση ενημέρωσης μέσα από την εφαρμογή (0.7.10 -> 0.7.11).

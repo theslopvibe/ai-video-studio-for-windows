@@ -25,3 +25,9 @@ tags: [ai-video-studio, risk]
 14. Security audit (Fable subagent, 2026-10-30) fixed in 0.5.3: no insecure TLS retry to workers; API Host check + constant-time token + empty 404; image_path via stash_input; editor postMessage origin check; CSP + runtime asset scope (`sync_asset_scope`); nodes pinned by `rev` in models.json; user HF packs only .safetensors/.gguf; imported workflows cannot reuse bundled ids; chat prompt sanitises workflow text. Open: bundled pickle weights (chatterbox .pt, RealESRGAN .pth) and ComfyUI/7zr downloads have no checksum yet; Gemini CLI runs with default tools; installer/.mcpb built locally, unsigned (build in CI later).
 
 15. v0.6.0 tools untested: Whisper node (torchaudio resample, ctranslate2 CUDA libs), SAM2 `coordinates_positive` forceInput STRING literal, LaMa/face helper nodes written from a sketch (GFPGAN normalisation (x-0.5)/0.5 assumed), TRELLIS.2 on 8 GB, DA3 dynamic-combo keys (`output.normalization`), DDColor timm import path. Click-to-point in miniPaint maps the click through the canvas rect (zoom/scroll not verified).
+
+## 2026-10-31
+- Card setup still 10-27 min (models download from HuggingFace). Idea: own docker image with models baked in (needs a build machine with Docker + 120 GB, registry GHCR/Docker Hub, licences re-checked); gain maybe 5-10 min, not instant; only for wan22 i2v/t2v packs.
+- Connection card ↔ app is TLS with a self-made pinned certificate (0.7.8). Cards created by 0.7.7 (http) are not reused and are closed as leftovers.
+- Stop-instead-of-delete not implemented. Auto-update flow never tested on a real second PC.
+- Launching the app for tests: use PowerShell Start-Process; a Bash `&` child dies when the tool call goes to background.

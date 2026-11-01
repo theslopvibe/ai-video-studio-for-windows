@@ -18,3 +18,6 @@ Run recipe in `tests/e2e/README.md`. It uses the real `%APPDATA%\com.aivideostud
 
 ## Not covered
 Real Vast, real GPU output, real template create/patch, Gemini/OpenAI/Anthropic API calls, installer on a clean PC, WebView2 bootstrapper path.
+
+## 2026-10-31 real-card test recipe
+Set kv `api_enabled=1` in studio.db, start target/release/app.exe with PowerShell Start-Process, read port+token from `%APPDATA%\com.aivideostudio.apppi.json`, use `export MSYS_NO_PATHCONV=1` in Git Bash, POST /v1/jobs (workflow wan22-i2v-lightning, image_path, gpu "RTX 4090", provider vast) or the MCP (`app.exe --mcp`, tools/call generate_video). Poll GET /v1/vast (`ready`, `progress`). Finish with POST /v1/vast/stop {all,user_confirmed} and check 0 instances; set api_enabled back to 0.

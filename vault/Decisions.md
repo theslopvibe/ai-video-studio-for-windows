@@ -16,3 +16,8 @@ tags: [ai-video-studio, decisions]
 - **Workflows are data** — drop JSON into the user folder; placeholders typed (`"{{width}}"` keeps number type).
 - **Honest progress** — `/generate/sync` is blocking, so only phase + elapsed time, no fake %.
 - **Light/dark** via CSS variables + `data-theme`.
+
+## 2026-10-31
+- Vast: one rented instance instead of serverless; deleted when idle (10 min) because a stopped one still bills ~29 USD/month for 110 GB.
+- Extension (.mcpb) and Connect-Claude.bat ship inside the installer (resources/connect) and are explained in Settings; Claude Code uses `claude mcp add ai-video-studio -- "<app.exe>" --mcp`.
+- One update per feature batch (user wish): test on a real card before releasing.
