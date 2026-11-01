@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.13
+
+- New: Text → Image with FLUX.3 klein (int8, 4-16 steps, about 11 GB pack, FLUX Kommunity License). The "FLUX" in "Models on the card" now means FLUX.3 klein, so Wan + FLUX.3 sit on the same card. If you have your own workflow with the id flux3-klein-t2i, the app shows a message: delete it, the built-in one has the model pack.
+
 ## 0.7.12
 
 - "Models on the card" now starts as "Wan + FLUX together": one card holds both, so images and clips work without changing anything. Pick another option on the Models page to save money.

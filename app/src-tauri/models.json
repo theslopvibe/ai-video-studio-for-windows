@@ -143,6 +143,31 @@
   ]
  },
  {
+  "id": "flux3-klein",
+  "name": "FLUX.3 [klein] int8",
+  "kind": "image",
+  "license": "FLUX Kommunity License",
+  "vram_gb": 12,
+  "size_gb": 11,
+  "desc_el": "FLUX 3 klein, int8 (4-16 steps), μικρό και φθηνό στο cloud. Άδεια FLUX Kommunity.",
+  "desc_en": "FLUX 3 klein, int8 (4-16 steps), small and cheap in the cloud. FLUX Kommunity License.",
+  "in_template": false,
+  "files": [
+   {
+    "dir": "diffusion_models",
+    "url": "https://huggingface.co/ml-resources/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors"
+   },
+   {
+    "dir": "text_encoders",
+    "url": "https://huggingface.co/ml-resources/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/ml-resources/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors"
+   }
+  ]
+ },
+ {
   "id": "sdxl-base",
   "name": "Stable Diffusion XL 1.0 base",
   "kind": "image",

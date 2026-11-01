@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 pub const LABEL: &str = "aivs-card";
 const WAN_PACK: &str = "wan22-i2v";
-const FLUX_PACK: &str = "flux2-klein-4b";
+const FLUX_PACK: &str = "flux3-klein";
 /// Cards with 16 GB or more, tried by price, for models that are small (FLUX and similar).
 const CHEAP_GPUS: &[&str] = &["RTX 3090", "RTX 4080", "RTX 4080S", "RTX 4070S Ti", "RTX 4090"];
 const DISK_GB: f64 = 110.0;
