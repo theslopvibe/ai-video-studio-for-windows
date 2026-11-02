@@ -420,18 +420,21 @@ impl Vast {
     /// Cheapest suitable machine for one GPU model: (offer id, $/hour). Needs a big disk and a fast download link.
     /// Machines of the given GPU models, cheapest first, only with a download link of 1 Gbit/s or more
     /// (the model download is most of the waiting time and the card is billed meanwhile). Returns (offer, USD/h, GPU name).
-    pub async fn find_offers(&self, key: &str, gpus: &[String], disk_gb: f64) -> Result<Vec<(i64, f64, String)>, String> {
+    /// Machines in `skip` (known slow, by machine id) are left out. Returns (offer, USD/h, GPU name, machine id).
+    pub async fn find_offers(&self, key: &str, gpus: &[String], disk_gb: f64, skip: &[i64]) -> Result<Vec<(i64, f64, String, i64)>, String> {
         let mut all = vec![];
         for g in gpus {
-            for (id, dph) in self.find_offers_min(key, g, disk_gb, 1000.0).await? {
-                all.push((id, dph, g.clone()));
+            for (id, dph, machine) in self.find_offers_min(key, g, disk_gb, 1000.0).await? {
+                if !skip.contains(&machine) {
+                    all.push((id, dph, g.clone(), machine));
+                }
             }
         }
         all.sort_by(|a, b| a.1.total_cmp(&b.1));
         Ok(all)
     }
 
-    async fn find_offers_min(&self, key: &str, gpu: &str, disk_gb: f64, min_mbps: f64) -> Result<Vec<(i64, f64)>, String> {
+    async fn find_offers_min(&self, key: &str, gpu: &str, disk_gb: f64, min_mbps: f64) -> Result<Vec<(i64, f64, i64)>, String> {
         let v = self
             .console_send(
                 reqwest::Method::POST,
@@ -453,7 +456,7 @@ impl Vast {
         // not in China: HuggingFace (where the models come from) is blocked or very slow there
         Ok(v["offers"].as_array().cloned().unwrap_or_default().iter()
             .filter(|o| !o["geolocation"].as_str().unwrap_or("").ends_with("CN"))
-            .filter_map(|o| Some((o["id"].as_i64()?, o["dph_total"].as_f64()?)))
+            .filter_map(|o| Some((o["id"].as_i64()?, o["dph_total"].as_f64()?, o["machine_id"].as_i64().unwrap_or(0))))
             .collect())
     }
 

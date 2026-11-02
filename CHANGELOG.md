@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.15
+
+- Every new cloud card now runs a speed test first (200 MB from the model server). A card that downloads slower than about 400 Mbit/s is closed within a minute and the next one is rented, instead of waiting 40 minutes. The advertised "1 Gbit/s" of a machine is often not what you really get.
+- Slow machines (and machines that cannot pull the image) are remembered for 7 days and skipped in later searches.
+- Up to 8 machines are tried before giving up (was 4). The log shows the measured speed of the model server and of a neutral server, so we can see who is slow.
+
 ## 0.7.14
 
 - A Windows notification appears when the cloud card is ready and its models are downloaded.

@@ -78,8 +78,40 @@ web.run_app(app, port=8188, ssl_context=ctx, print=None)
 "#;
 
 /// Start script of the rented machine: downloads the models + nodes into the image's ComfyUI, then starts ComfyUI (local only) and the token proxy.
+/// One download stream must reach this on the card (~400 Mbit/s; a single stream never fills a 1 Gbit/s line).
+/// The slow cards seen in practice gave 1-3 MB/s.
+const MIN_BYTES_PER_SEC: u64 = 50_000_000;
+
+/// Machines that failed the speed test in the last 7 days (kv "slow_machines": {"machine id": unix seconds}).
+fn slow_machines(st: &crate::AppState) -> Vec<i64> {
+    let now = now_secs();
+    let m: std::collections::HashMap<String, u64> = st.db.kv_get("slow_machines").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    m.into_iter().filter(|(_, t)| now.saturating_sub(*t) < 7 * 86400).filter_map(|(k, _)| k.parse().ok()).collect()
+}
+
+fn mark_slow(st: &crate::AppState, machine: i64) {
+    if machine == 0 {
+        return;
+    }
+    let now = now_secs();
+    let mut m: std::collections::HashMap<String, u64> = st.db.kv_get("slow_machines").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    m.retain(|_, t| now.saturating_sub(*t) < 7 * 86400);
+    m.insert(machine.to_string(), now);
+    st.db.kv_set("slow_machines", &serde_json::to_string(&m).unwrap_or_default()).ok();
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
 fn onstart(packs: &[Value], token: &str, cert: &str, key: &str) -> String {
     let mut script = provision::build_script(packs, true).replacen("C=/workspace/ComfyUI", "C=/opt/workspace-internal/ComfyUI; [ -d $C ] || C=/workspace/ComfyUI", 1);
+    // Speed test before anything is downloaded: the link Vast advertises is often not what we really get.
+    // Too slow -> marker line, the app closes this card and rents another one.
+    let test_url = packs.iter().flat_map(|p| p["files"].as_array().cloned().unwrap_or_default()).filter(|f| f["url"].as_str().is_some_and(|u| u.starts_with("https://") && (u.ends_with(".safetensors") || u.ends_with(".gguf")))).max_by_key(|f| f["dir"].as_str().is_some_and(|d| d.contains("diffusion_models") || d.contains("unet"))).and_then(|f| f["url"].as_str().map(String::from));
+    if let Some(u) = test_url {
+        script = format!("S=$(curl -sL -r 0-199999999 --max-time 25 -o /dev/null -w '%{{speed_download}}' \"{u}\" 2>/dev/null); S=${{S%.*}}; S=${{S:-0}}; C=$(curl -s --max-time 15 -o /dev/null -w '%{{speed_download}}' 'https://speed.cloudflare.com/__down?bytes=100000000' 2>/dev/null); C=${{C%.*}}; echo AIVS_SPEED $((S/1000000)) MBps, neutral server $((${{C:-0}}/1000000)) MBps; if [ \"$S\" -lt {MIN_BYTES_PER_SEC} ]; then echo AIVS_SLOWLINK; exit 1; fi\n{script}");
+    }
     script.push_str("echo AIVS_MODELS_DONE
 mkdir -p /workspace
 . /venv/main/bin/activate
@@ -210,23 +242,25 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
     let token = if id != 0 { token_saved } else { rand_token() };
     // a new token and a new certificate for every new card
     let (cert_pem, key_pem) = if id != 0 { (cert_saved, String::new()) } else { gen_cert()? };
-    let mut offers: Vec<(i64, f64, String)> = vec![];
+    let mut offers: Vec<(i64, f64, String, i64)> = vec![];
+    let mut cur_machine = 0i64;
     let mut tries = 0usize;
     // rents the next machine of the list; some machines cannot pull the image, then the next one is tried
     macro_rules! rent {
         () => {{
             if offers.is_empty() {
                 say("Looking for a card with a fast link…");
-                offers = st.vast.find_offers(&key, &gpus, DISK_GB).await?;
+                offers = st.vast.find_offers(&key, &gpus, DISK_GB, &slow_machines(st)).await?;
                 if offers.is_empty() {
                     return Err(format!("No {} is available right now with enough disk and a 1 Gbit/s link. Try again in a few minutes or pick another card.", gpus.join(" / ")));
                 }
             }
             tries += 1;
-            if tries > 4 {
-                return Err("Four different machines failed to start. Try again in a few minutes.".into());
+            if tries > 8 {
+                return Err("Eight different machines were too slow or failed to start. Try again in a few minutes.".into());
             }
-            let (offer, dph, gpu) = offers.remove(0);
+            let (offer, dph, gpu, machine) = offers.remove(0);
+            cur_machine = machine;
             say(&format!("Renting a {gpu} (~{dph:.2} USD/hour)…"));
             let env = json!({ "-p 8188:8188": "1" });
             let new_id = st.vast.create_instance(&key, offer, json!({ "image": IMAGE, "env": env, "disk": DISK_GB, "label": LABEL, "runtype": "ssh", "onstart": onstart(&packs, &token, &cert_pem, &key_pem) })).await?;
@@ -288,10 +322,23 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
                     return Ok(Card { fresh, id, base, token, client });
                 }
                 say(&format!("Card running, downloading the models… {}", crate::queue::fmt_secs(t0.elapsed().as_secs())));
-                if last_logs.elapsed() > Duration::from_secs(120) {
+                // the speed test runs in the first minute: look at the log often then, later every 2 minutes
+                let every = match t0.elapsed().as_secs() { 0..=179 => 8, 180..=599 => 20, _ => 120 };
+                if last_logs.elapsed() > Duration::from_secs(every) {
                     last_logs = Instant::now();
                     let l = st.vast.instance_logs(&key, id).await;
-                    crate::log::info(&format!("card {id} log tail: {}", l.replace('\n', " | ")));
+                    if l.contains("AIVS_SLOWLINK") {
+                        let sp = l.lines().rev().find(|x| x.contains("AIVS_SPEED")).unwrap_or("").to_string();
+                        crate::log::info(&format!("card: {id} download too slow ({sp}), machine {cur_machine} is remembered as slow, trying another"));
+                        mark_slow(st, cur_machine);
+                        let _ = st.vast.destroy_instance(&key, id).await;
+                        id = rent!();
+                        t0 = Instant::now();
+                        continue;
+                    }
+                    if every == 120 {
+                        crate::log::info(&format!("card {id} log tail: {}", l.replace('\n', " | ")));
+                    }
                 }
             } else {
                 say("Card running, opening the connection…");
@@ -300,6 +347,7 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
             let msg = inst["status_msg"].as_str().unwrap_or("");
             if msg.contains("Error response from daemon") || t0.elapsed() > Duration::from_secs(12 * 60) {
                 crate::log::info(&format!("card: instance {id} cannot start ({}), trying another machine", msg.chars().take(150).collect::<String>()));
+                mark_slow(st, cur_machine);
                 let _ = st.vast.destroy_instance(&key, id).await;
                 id = rent!();
                 t0 = Instant::now();
