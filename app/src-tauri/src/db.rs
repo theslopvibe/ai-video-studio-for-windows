@@ -218,6 +218,13 @@ impl Db {
         .flatten()
     }
 
+    /// All waiting jobs, oldest first.
+    pub fn queued_all(&self) -> Vec<Job> {
+        let c = self.0.lock().unwrap();
+        let Ok(mut s) = c.prepare(&format!("SELECT {JOB_COLS} FROM jobs WHERE status='queued' ORDER BY created_at, rowid")) else { return vec![] };
+        s.query_map([], row_to_job).map(|r| r.filter_map(|x| x.ok()).collect()).unwrap_or_default()
+    }
+
     pub fn update_job(&self, id: &str, status: &str, message: &str, error: &str) -> Result<()> {
         let c = self.0.lock().unwrap();
         c.execute(

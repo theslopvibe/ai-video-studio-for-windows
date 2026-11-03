@@ -87,7 +87,7 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 
 const SETTING_KEYS: &[&str] = &[
     "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project",
-    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "auto_close_min", "card_models",
+    "last_workflow", "models_selected", "enhance_provider", "claude_model", "delivery", "worker_pack", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "auto_close_min", "card_models", "card_max", "image_card",
 ];
 
 #[derive(Serialize)]
@@ -592,7 +592,7 @@ pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
 }
 
 static WARM_CANCEL: AtomicBool = AtomicBool::new(false);
-static WARM_RUNNING: AtomicBool = AtomicBool::new(false);
+static WARM_RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 #[derive(Serialize, Clone)]
 struct WarmEvent { state: String, text: String, secs: u64 }
@@ -600,36 +600,37 @@ struct WarmEvent { state: String, text: String, secs: u64 }
 /// "Start card": asks Vast for a worker without sending a job, so the models download now and the first video starts at once.
 /// The worker only reports ready after its start-up script (the model downloads) has finished. Costs GPU time while it waits.
 #[tauri::command]
-async fn warm_up(app: AppHandle) -> R<()> {
-    run_warm(&app).await
+async fn warm_up(app: AppHandle, image: Option<bool>, extra: Option<bool>) -> R<()> {
+    run_warm_with(&app, None, None, image.unwrap_or(false), extra.unwrap_or(false)).await
 }
 
 pub fn warm_state() -> &'static str {
-    if WARM_RUNNING.load(Ordering::SeqCst) { "preparing" } else { "idle" }
+    if WARM_RUNNING.load(Ordering::SeqCst) > 0 { "preparing" } else { "idle" }
 }
 
 pub async fn run_warm(app: &AppHandle) -> R<()> {
-    run_warm_with(app, None, None).await
+    run_warm_with(app, None, None, false, false).await
 }
 
 /// `workflow`: the mode whose models the card should hold; `gpu`: exact Vast GPU name. Both default to the saved choices.
-pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Option<String>) -> R<()> {
+pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Option<String>, image: bool, extra: bool) -> R<()> {
     use tauri::Emitter;
     let st = app.state::<AppState>();
-    if WARM_RUNNING.swap(true, Ordering::SeqCst) { return Err("Already preparing a card.".into()); }
-    WARM_CANCEL.store(false, Ordering::SeqCst);
+    if WARM_RUNNING.fetch_add(1, Ordering::SeqCst) == 0 { WARM_CANCEL.store(false, Ordering::SeqCst); }
     let res = async {
         let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
         if st.db.kv_get("vast_mode").as_deref() != Some("serverless") {
             // a card of our own: GPU from the selection (default RTX 4090), models of the last used mode (default Wan 2.2 image→video)
             let gpu = gpu.clone().unwrap_or_default();
             let (wfs, _) = st.load_workflows();
-            let pack = workflow.clone().or_else(|| st.db.kv_get("last_workflow")).and_then(|id| wfs.iter().find(|w| w.meta.id == id).map(|w| w.meta.pack.clone())).filter(|p| !p.is_empty()).unwrap_or_else(|| "wan22-i2v".into());
+            let chosen = workflow.clone().or_else(|| if image { None } else { st.db.kv_get("last_workflow") }).and_then(|id| wfs.iter().find(|w| w.meta.id == id).map(|w| (w.meta.pack.clone(), matches!(w.meta.kind.as_str(), "t2i" | "i2i")))).filter(|(p, _)| !p.is_empty());
+            let image = image || chosen.as_ref().is_some_and(|c| c.1);
+            let pack = chosen.map(|c| c.0).unwrap_or_else(|| if image { "flux3-klein".into() } else { "wan22-i2v".into() });
             let cancel = AtomicBool::new(false);
             let (a2, t0) = (app.clone(), std::time::Instant::now());
             let say = move |m: &str| { let _ = a2.emit("warmup", WarmEvent { state: "working".into(), text: m.into(), secs: t0.elapsed().as_secs() }); };
             let packs = [pack];
-            let fut = card::ensure(&st, &gpu, &packs, &cancel, &say);
+            let fut = card::ensure(&st, &gpu, &packs, card::Want { image, extra, job: false }, &cancel, &say);
             tokio::pin!(fut);
             loop {
                 tokio::select! {
@@ -665,7 +666,7 @@ pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Optio
         }
     }
     .await;
-    WARM_RUNNING.store(false, Ordering::SeqCst);
+    WARM_RUNNING.fetch_sub(1, Ordering::SeqCst);
     match res {
         Ok(true) => { log::info("warm_up: ready"); let _ = app.emit("warmup", WarmEvent { state: "ready".into(), text: String::new(), secs: 0 }); Ok(()) }
         Ok(false) => { let _ = app.emit("warmup", WarmEvent { state: "cancelled".into(), text: String::new(), secs: 0 }); Ok(()) }
@@ -679,7 +680,7 @@ pub async fn auto_close_loop(app: AppHandle) {
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         let st = app.state::<AppState>();
-        let busy = WARM_RUNNING.load(Ordering::SeqCst)
+        let busy = WARM_RUNNING.load(Ordering::SeqCst) > 0
             || st.db.jobs(None).map(|j| j.iter().any(|j| matches!(j.status.as_str(), "queued" | "routing" | "generating" | "downloading"))).unwrap_or(false);
         if busy { last_active = std::time::Instant::now(); continue; }
         let limit: u64 = st.db.kv_get("auto_close_min").and_then(|v| v.parse().ok()).unwrap_or(10);
@@ -1180,6 +1181,7 @@ pub fn run() {
             app.state::<AppState>().sync_asset_scope(&h);
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
             tauri::async_runtime::spawn(auto_close_loop(h.clone()));
+            tauri::async_runtime::spawn(card::watchdog(h.clone()));
             // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
             if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {
                 api::set_enabled(&h, true);

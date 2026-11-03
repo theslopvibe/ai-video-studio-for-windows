@@ -13,16 +13,127 @@ const CHEAP_GPUS: &[&str] = &["RTX 3090", "RTX 4080", "RTX 4080S", "RTX 4070S Ti
 const DISK_GB: f64 = 110.0;
 const IMAGE: &str = "vastai/comfy:v0.43.0-cuda-12.9-py312";
 
+/// Held only while deciding "reuse a card / rent a new one", so two jobs never rent more cards than the limit.
 static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// card id -> (jobs using it, warm-ups waiting for it). A card used by a job is not given to a second job.
+static LEASES: std::sync::Mutex<Vec<(i64, u32, u32)>> = std::sync::Mutex::new(Vec::new());
+static LAST_USED: std::sync::Mutex<Vec<(i64, Instant)>> = std::sync::Mutex::new(Vec::new());
+/// Cards whose ComfyUI has answered (set by `ensure` and by the watchdog).
+static READY: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
+
+/// What a call to `ensure` needs.
+#[derive(Clone, Copy, Default)]
+pub struct Want {
+    /// Picture-only job: a cheap FLUX-only card is enough (setting `image_card`).
+    pub image: bool,
+    /// Rent one more card even if an idle one exists ("two cards at once").
+    pub extra: bool,
+    /// A generation job (false = only warming a card up).
+    pub job: bool,
+}
+
+pub struct Lease {
+    id: i64,
+    job: bool,
+}
+
+impl Lease {
+    fn new(job: bool) -> Self {
+        Lease { id: 0, job }
+    }
+    fn set(&mut self, id: i64) {
+        self.release();
+        self.id = id;
+        if let Ok(mut l) = LEASES.lock() {
+            match l.iter_mut().find(|x| x.0 == id) {
+                Some(x) => if self.job { x.1 += 1 } else { x.2 += 1 },
+                None => l.push((id, self.job as u32, !self.job as u32)),
+            }
+        }
+    }
+    fn release(&mut self) {
+        if self.id == 0 {
+            return;
+        }
+        if let Ok(mut l) = LEASES.lock() {
+            if let Some(x) = l.iter_mut().find(|x| x.0 == self.id) {
+                if self.job { x.1 = x.1.saturating_sub(1) } else { x.2 = x.2.saturating_sub(1) }
+            }
+            l.retain(|x| x.1 + x.2 > 0);
+        }
+        touch(self.id);
+        self.id = 0;
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+fn touch(id: i64) {
+    if let Ok(mut l) = LAST_USED.lock() {
+        l.retain(|x| x.0 != id);
+        l.push((id, Instant::now()));
+    }
+}
+
+fn leased(id: i64, jobs_only: bool) -> bool {
+    LEASES.lock().map(|l| l.iter().any(|x| x.0 == id && (x.1 > 0 || (!jobs_only && x.2 > 0)))).unwrap_or(false)
+}
+
+fn idle_for(id: i64) -> Duration {
+    LAST_USED.lock().ok().and_then(|l| l.iter().find(|x| x.0 == id).map(|x| x.1.elapsed())).unwrap_or_default()
+}
+
+fn set_ready(id: i64, ready: bool) {
+    if let Ok(mut r) = READY.lock() {
+        r.retain(|x| *x != id);
+        if ready {
+            r.push(id);
+        }
+    }
+}
+
+pub fn is_ready(id: i64) -> bool {
+    READY.lock().map(|r| r.contains(&id)).unwrap_or(false)
+}
+
+pub fn in_use(id: i64) -> bool {
+    leased(id, true)
+}
+
+/// Max cards at the same time (setting `card_max`, 1-4, default 2).
+pub fn card_max(st: &AppState) -> usize {
+    st.db.kv_get("card_max").and_then(|v| v.parse::<usize>().ok()).unwrap_or(2).clamp(1, 4)
+}
+
+/// Per-card secrets: kv "cards" = {"<instance id>": {"token","cert","packs"}}.
+fn meta_load(st: &AppState) -> serde_json::Map<String, Value> {
+    st.db.kv_get("cards").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn meta_save(st: &AppState, m: &serde_json::Map<String, Value>) {
+    st.db.kv_set("cards", &serde_json::to_string(m).unwrap_or_default()).ok();
+}
+
+fn meta_put(st: &AppState, id: i64, token: &str, cert: &str, packs: &str) {
+    let mut m = meta_load(st);
+    m.insert(id.to_string(), json!({ "token": token, "cert": cert, "packs": packs }));
+    meta_save(st, &m);
+}
 
 pub struct Card {
     /// true when this call rented the card (the models were just installed), false when an existing card was reused
     pub fresh: bool,
+    #[allow(dead_code)]
     pub id: i64,
     pub base: String,
     pub token: String,
     /// Talks TLS to the card and trusts only the certificate made for it (so the token never travels in clear text).
     pub client: reqwest::Client,
+    _lease: Lease,
 }
 
 const HOST: &str = "aivs-card.local";
@@ -181,9 +292,9 @@ async fn missing_files(c: &reqwest::Client, base: &str, token: &str, packs: &[Va
     missing
 }
 
-/// Returns a ready card, creating one if none exists. `say` receives short progress texts.
-pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &AtomicBool, say: &(dyn Fn(&str) + Sync)) -> Result<Card, String> {
-    let _guard = LOCK.lock().await;
+/// Returns a ready card: reuses an idle one that has the models, otherwise rents one (up to `card_max` at the same time).
+/// `say` receives short progress texts.
+pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], want: Want, cancel: &AtomicBool, say: &(dyn Fn(&str) + Sync)) -> Result<Card, String> {
     let key = secrets::get("vast_api_key").ok_or("Missing Vast API key (Settings).")?;
     if pack_ids.is_empty() {
         return Err("This mode has no model pack to install on a card.".into());
@@ -194,13 +305,19 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
         set_state(false, m);
         say_outer(m)
     };
-    // what the user wants on the card: only the mode's models (auto), Wan, FLUX or both at once
+    // what the user wants on the card: a picture-only card (just the picture model: cheaper and quicker to start),
+    // or the mode's models (auto), Wan, FLUX or both at once
+    let image_only = want.image && st.db.kv_get("image_card").as_deref() != Some("off");
     let mut ids: Vec<String> = pack_ids.to_vec();
-    let extra: &[&str] = match st.db.kv_get("card_models").as_deref() {
-        Some("wan") => &[WAN_PACK],
-        Some("flux") => &[FLUX_PACK],
-        Some("auto") => &[],
-        _ => &[WAN_PACK, FLUX_PACK],
+    let extra: &[&str] = if image_only {
+        &[]
+    } else {
+        match st.db.kv_get("card_models").as_deref() {
+            Some("wan") => &[WAN_PACK],
+            Some("flux") => &[FLUX_PACK],
+            Some("auto") => &[],
+            _ => &[WAN_PACK, FLUX_PACK],
+        }
     };
     for e in extra {
         if !ids.iter().any(|i| i == e) {
@@ -218,30 +335,11 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
         CHEAP_GPUS.iter().map(|s| s.to_string()).collect()
     };
     let want_packs = ids.join(",");
-    let mut ours: Vec<Value> = st.vast.instances_raw(&key).await?.into_iter().filter(|i| i["label"] == LABEL).collect();
-    let token_saved = st.db.kv_get("card_token").unwrap_or_default();
-    let cert_saved = st.db.kv_get("card_cert").unwrap_or_default();
-    let have_packs = st.db.kv_get("card_packs").unwrap_or_default();
-    // reuse only a card that has the right GPU, the needed models and a token we know
-    let reusable = ours.iter().position(|i| {
-        gpus.iter().any(|g| Some(g.as_str()) == i["gpu_name"].as_str()) && !token_saved.is_empty() && !cert_saved.is_empty() && want_packs.split(',').all(|p| have_packs.split(',').any(|h| h == p)) && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
-    });
-    let mut id = 0i64;
-    let mut reused = false;
-    if let Some(ix) = reusable {
-        reused = true;
-        id = ours.remove(ix)["id"].as_i64().unwrap_or(0);
-    }
-    for o in ours {
-        // an unusable leftover of ours (other GPU / models / no token): close it, it is billed otherwise
-        if let Some(oid) = o["id"].as_i64() {
-            crate::log::info(&format!("card: closing leftover {oid}"));
-            let _ = st.vast.destroy_instance(&key, oid).await;
-        }
-    }
-    let token = if id != 0 { token_saved } else { rand_token() };
-    // a new token and a new certificate for every new card
-    let (cert_pem, key_pem) = if id != 0 { (cert_saved, String::new()) } else { gen_cert()? };
+    let max = card_max(st);
+    let mut lease = Lease::new(want.job);
+    let mut token;
+    let mut cert_pem;
+    let mut key_pem;
     let mut offers: Vec<(i64, f64, String, i64)> = vec![];
     let mut cur_machine = 0i64;
     let mut tries = 0usize;
@@ -262,22 +360,98 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
             let (offer, dph, gpu, machine) = offers.remove(0);
             cur_machine = machine;
             say(&format!("Renting a {gpu} (~{dph:.2} USD/hour)…"));
+            // a new token and a new certificate for every new card
+            token = rand_token();
+            (cert_pem, key_pem) = gen_cert()?;
             let env = json!({ "-p 8188:8188": "1" });
             let new_id = st.vast.create_instance(&key, offer, json!({ "image": IMAGE, "env": env, "disk": DISK_GB, "label": LABEL, "runtype": "ssh", "onstart": onstart(&packs, &token, &cert_pem, &key_pem) })).await?;
-            st.db.kv_set("card_token", &token).ok();
-            st.db.kv_set("card_cert", &cert_pem).ok();
-            st.db.kv_set("card_packs", &want_packs).ok();
-            crate::log::info(&format!("card: created instance {new_id} ({gpu}, offer {offer}, {dph:.2} USD/h)"));
+            meta_put(st, new_id, &token, &cert_pem, &want_packs);
+            lease.set(new_id);
+            crate::log::info(&format!("card: created instance {new_id} ({gpu}, offer {offer}, {dph:.2} USD/h, packs {want_packs})"));
             new_id
         }};
     }
-    if id == 0 {
+    // decide: reuse an idle card, or rent a new one if there is room (short critical section)
+    let mut id;
+    let reused;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
+        }
+        let guard = LOCK.lock().await;
+        let mut ours: Vec<Value> = st.vast.instances_raw(&key).await?.into_iter().filter(|i| i["label"] == LABEL).collect();
+        let mut meta = meta_load(st);
+        // a card made by version 0.7.x kept its secrets in single settings
+        if meta.is_empty() && ours.len() == 1 {
+            let (t, c, p) = (st.db.kv_get("card_token").unwrap_or_default(), st.db.kv_get("card_cert").unwrap_or_default(), st.db.kv_get("card_packs").unwrap_or_default());
+            if !t.is_empty() && !c.is_empty() {
+                meta_put(st, ours[0]["id"].as_i64().unwrap_or(0), &t, &c, &p);
+                meta = meta_load(st);
+            }
+        }
+        let alive: Vec<String> = ours.iter().filter_map(|i| i["id"].as_i64()).map(|n| n.to_string()).collect();
+        let before = meta.len();
+        meta.retain(|k, _| alive.contains(k));
+        if meta.len() != before {
+            meta_save(st, &meta);
+        }
+        let usable = |i: &Value| -> bool {
+            let Some(n) = i["id"].as_i64() else { return false };
+            let Some(m) = meta.get(&n.to_string()) else { return false };
+            let have = m["packs"].as_str().unwrap_or("");
+            !leased(n, true)
+                && gpus.iter().any(|g| Some(g.as_str()) == i["gpu_name"].as_str())
+                && want_packs.split(',').all(|p| have.split(',').any(|h| h == p))
+                && !matches!(i["actual_status"].as_str(), Some("exited" | "stopped"))
+        };
+        let pick = if want.extra { None } else { ours.iter().filter(|i| usable(i)).min_by_key(|i| !is_ready(i["id"].as_i64().unwrap_or(0))).and_then(|i| i["id"].as_i64()) };
+        if let Some(n) = pick {
+            let m = &meta[&n.to_string()];
+            token = m["token"].as_str().unwrap_or("").to_string();
+            cert_pem = m["cert"].as_str().unwrap_or("").to_string();
+            lease.set(n);
+            id = n;
+            reused = true;
+            break;
+        }
+        // a card of ours whose secrets we do not have cannot be used: close it, it is billed otherwise
+        for o in ours.clone() {
+            let oid = o["id"].as_i64().unwrap_or(0);
+            if oid != 0 && !meta.contains_key(&oid.to_string()) && !leased(oid, false) {
+                crate::log::info(&format!("card: closing leftover {oid}"));
+                let _ = st.vast.destroy_instance(&key, oid).await;
+                ours.retain(|x| x["id"].as_i64() != Some(oid));
+            }
+        }
+        if ours.len() >= max {
+            if want.extra {
+                return Err(format!("Already {} cards, which is the limit (setting card_max, 1-4). Close one or raise the limit first.", ours.len()));
+            }
+            // make room by closing the card that has been idle the longest (never one that is in use)
+            let victim = ours.iter().filter_map(|i| i["id"].as_i64()).filter(|n| !leased(*n, false)).max_by_key(|n| idle_for(*n));
+            match victim {
+                Some(v) => {
+                    crate::log::info(&format!("card: closing idle card {v} to make room for another kind"));
+                    let _ = st.vast.destroy_instance(&key, v).await;
+                    set_ready(v, false);
+                }
+                None => {
+                    drop(guard);
+                    say(&format!("All {max} cards are busy, waiting for one to be free…"));
+                    tokio::time::sleep(Duration::from_secs(6)).await;
+                    continue;
+                }
+            }
+        }
         id = rent!();
+        reused = false;
+        break;
     }
     let mut fresh = !reused;
     // wait until ComfyUI answers with our node (it restarts after the models are downloaded)
     let mut t0 = Instant::now();
     let mut last_logs = Instant::now();
+    let mut last_tail = Instant::now();
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Err("cancelled".into());
@@ -289,11 +463,13 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
         }
         let list = st.vast.instances_raw(&key).await.unwrap_or_default();
         let Some(inst) = list.iter().find(|i| i["id"].as_i64() == Some(id)) else {
+            set_ready(id, false);
             return Err("The card disappeared (Vast removed it).".into());
         };
         let status = inst["actual_status"].as_str().unwrap_or("?").to_string();
         if matches!(status.as_str(), "exited" | "stopped") {
             let _ = st.vast.destroy_instance(&key, id).await;
+            set_ready(id, false);
             return Err("The card stopped by itself, so it was closed.".into());
         }
         if status == "running" {
@@ -319,11 +495,12 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
                     }
                     crate::log::info(&format!("card: {id} ready after {}s at {ip}:{port}", t0.elapsed().as_secs()));
                     set_state(true, "");
-                    return Ok(Card { fresh, id, base, token, client });
+                    set_ready(id, true);
+                    return Ok(Card { fresh, id, base, token, client, _lease: lease });
                 }
                 say(&format!("Card running, downloading the models… {}", crate::queue::fmt_secs(t0.elapsed().as_secs())));
-                // the speed test runs in the first minute: look at the log often then, later every 2 minutes
-                let every = match t0.elapsed().as_secs() { 0..=179 => 8, 180..=599 => 20, _ => 120 };
+                // the speed test runs in the first minute: look at the log often then, later every 30 seconds
+                let every = match t0.elapsed().as_secs() { 0..=179 => 8, 180..=599 => 15, _ => 30 };
                 if last_logs.elapsed() > Duration::from_secs(every) {
                     last_logs = Instant::now();
                     let l = st.vast.instance_logs(&key, id).await;
@@ -336,7 +513,8 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
                         t0 = Instant::now();
                         continue;
                     }
-                    if every == 120 {
+                    if t0.elapsed().as_secs() > 600 && last_tail.elapsed() > Duration::from_secs(120) {
+                        last_tail = Instant::now();
                         crate::log::info(&format!("card {id} log tail: {}", l.replace('\n', " | ")));
                     }
                 }
@@ -356,5 +534,95 @@ pub async fn ensure(st: &AppState, gpu: &str, pack_ids: &[String], cancel: &Atom
             say(&format!("Card {status}… {}", crate::queue::fmt_secs(t0.elapsed().as_secs())));
         }
         tokio::time::sleep(Duration::from_secs(8)).await;
+    }
+}
+
+/// Checks every card of the app once a minute (the old check only ran while jobs were active):
+/// - a card Vast stopped, or a ready card whose ComfyUI stopped answering for 3 minutes, is closed at once (a dead card still bills)
+/// - a card that was never ready after 45 minutes is closed
+/// - a ready card nobody uses for `auto_close_min` minutes is closed (the others keep working)
+///
+/// Each closing shows a Windows notification.
+pub async fn watchdog(app: tauri::AppHandle) {
+    use tauri::Manager;
+    use tauri_plugin_notification::NotificationExt;
+    let mut fails: std::collections::HashMap<i64, u32> = Default::default();
+    let mut first_seen: std::collections::HashMap<i64, Instant> = Default::default();
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        let st = app.state::<AppState>();
+        let Some(key) = secrets::get("vast_api_key") else { continue };
+        let Ok(list) = st.vast.instances_raw(&key).await else { continue };
+        let ours: Vec<&Value> = list.iter().filter(|i| i["label"] == LABEL).collect();
+        let meta = meta_load(&st);
+        let limit: u64 = st.db.kv_get("auto_close_min").and_then(|v| v.parse().ok()).unwrap_or(10);
+        let queued = st.db.next_queued().is_some();
+        let ids: Vec<i64> = ours.iter().filter_map(|i| i["id"].as_i64()).collect();
+        fails.retain(|k, _| ids.contains(k));
+        first_seen.retain(|k, _| ids.contains(k));
+        if let Ok(mut r) = READY.lock() {
+            r.retain(|k| ids.contains(k));
+        }
+        for inst in ours {
+            let Some(id) = inst["id"].as_i64() else { continue };
+            let seen = *first_seen.entry(id).or_insert_with(Instant::now);
+            let mut why = String::new();
+            let status = inst["actual_status"].as_str().unwrap_or("");
+            if matches!(status, "exited" | "stopped") {
+                why = format!("Vast stopped the card ({status})");
+            } else if status == "running" {
+                if let (Some((ip, port)), Some(m)) = (address(inst), meta.get(&id.to_string())) {
+                    let (token, cert) = (m["token"].as_str().unwrap_or(""), m["cert"].as_str().unwrap_or(""));
+                    if let Ok(client) = make_client(cert, &ip, &port) {
+                        let base = format!("https://{HOST}:{port}");
+                        if probe(&client, &base, token, "AIVSSaveVideoBase64").await {
+                            fails.remove(&id);
+                            // answering after an app restart: the card is usable (its model files are checked when a job takes it)
+                            if !leased(id, false) && !is_ready(id) {
+                                set_ready(id, true);
+                                touch(id);
+                            }
+                        } else if is_ready(id) {
+                            let n = fails.entry(id).or_insert(0);
+                            *n += 1;
+                            if *n >= 3 {
+                                why = "the card stopped answering for 3 minutes".into();
+                            }
+                        }
+                    }
+                }
+            }
+            if why.is_empty() && !is_ready(id) && !leased(id, false) && seen.elapsed() > Duration::from_secs(45 * 60) {
+                why = "the card was never ready after 45 minutes".into();
+            }
+            if why.is_empty() && is_ready(id) && !leased(id, false) && !queued && limit > 0 && idle_for(id) > Duration::from_secs(limit * 60) {
+                why = format!("nobody used the card for {limit} minutes");
+            }
+            if !why.is_empty() {
+                crate::log::info(&format!("card watchdog: closing {id}: {why}"));
+                let _ = st.vast.destroy_instance(&key, id).await;
+                set_ready(id, false);
+                let _ = app.notification().builder().title("AI Video Studio").body(format!("A cloud card was closed so it stops billing: {why}.")).show();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lease_blocks_second_job_but_not_a_warmup_wait() {
+        let (mut warm, mut job) = (Lease::new(false), Lease::new(true));
+        warm.set(9001);
+        assert!(leased(9001, false) && !leased(9001, true), "a warm-up can be adopted by a job");
+        job.set(9001);
+        assert!(leased(9001, true), "a card in use by a job is taken");
+        drop(job);
+        assert!(!leased(9001, true));
+        drop(warm);
+        assert!(!leased(9001, false));
+        assert!(idle_for(9001) < Duration::from_secs(5));
     }
 }

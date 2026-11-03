@@ -109,7 +109,7 @@ export const api = {
   applyGpus: (gpus: string[], minVram: number, dph: number) => invoke<string>("apply_gpus", { gpus, minVram, dph }),
   vastInstances: () => invoke<{ id: number; gpu: string; status: string; usd_per_hour: number; minutes: number; cost_so_far: number }[]>("vast_instances"),
   vastDestroy: (id: number) => invoke<string>("vast_destroy", { id }),
-  warmUp: () => invoke<void>("warm_up"),
+  warmUp: (image = false, extra = false) => invoke<void>("warm_up", { image, extra }),
   warmCancel: () => invoke<void>("warm_cancel"),
   installOnWorkers: (ids: string[], apply: boolean) => invoke<InstallResult>("install_on_workers", { ids, apply }),
   hfLookup: (query: string, videoOnly: boolean) => invoke<HfResult>("hf_lookup", { query, videoOnly }),

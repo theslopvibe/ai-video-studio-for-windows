@@ -67,7 +67,7 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
             }
             call(c, "POST", "/v1/jobs", Some(body)).await
         }
-        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "gpu": a["gpu"] }))).await,
+        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "gpu": a["gpu"], "card_max": a["card_max"], "image_card": a["image_card"], "auto_close_min": a["auto_close_min"] }))).await,
         "get_job" => {
             let id = a["job_id"].as_str().ok_or("job_id is required")?;
             let until = std::time::Instant::now() + std::time::Duration::from_secs(a["wait_seconds"].as_u64().unwrap_or(0).min(45));
@@ -87,7 +87,7 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
             if !confirmed {
                 return Err("Ρώτα πρώτα τον χρήστη (η κάρτα κοστίζει όσο τρέχει) και ξανακάλεσε με user_confirmed=true.".into());
             }
-            call(c, "POST", "/v1/card/start", Some(json!({ "user_confirmed": true, "workflow_id": a["workflow_id"], "gpu": a["gpu"] }))).await
+            call(c, "POST", "/v1/card/start", Some(json!({ "user_confirmed": true, "workflow_id": a["workflow_id"], "gpu": a["gpu"], "kind": a["kind"], "new_card": a["new_card"] }))).await
         }
         "vast_running" => call(c, "GET", "/v1/vast", None).await,
         "vast_stop" => {

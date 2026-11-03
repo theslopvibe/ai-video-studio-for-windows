@@ -108,11 +108,11 @@
     });
     return () => { clearInterval(timer); un.then((f) => f()); };
   });
-  async function prepare() {
+  async function prepare(image = false) {
     if (!(await askDialog(S.t("warm_confirm"), { kind: "warning" }))) return;
     setTimeout(refreshCards, 3000);
     warm = { state: "working", text: "", secs: 0 };
-    try { await api.warmUp(); } catch (e) { warm = { state: "error", text: String(e), secs: 0 }; }
+    try { await api.warmUp(image, !!cards?.length); } catch (e) { warm = { state: "error", text: String(e), secs: 0 }; }
   }
   const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   async function copy() { await navigator.clipboard.writeText(script); S.notify(S.t("copied")); }
@@ -144,13 +144,22 @@
       </div>
     {/each}
     <div class="row" style="margin-top:10px;flex-wrap:wrap">
-      <button class="primary" onclick={prepare} disabled={warm?.state === "working" || !!cards?.length}>{S.t("card_start")}</button>
+      <button class="primary" onclick={() => prepare(false)} disabled={warm?.state === "working"}>{cards?.length ? S.t("card_start_more") : S.t("card_start")}</button>
+      <button onclick={() => prepare(true)} disabled={warm?.state === "working"}>{S.t("card_start_img")}</button>
       <button onclick={() => closeCard(0)} disabled={!cards?.length && warm?.state !== "working"}>{S.t("card_delete")}</button>
     </div>
     <div class="small dim" style="margin-top:8px">{S.t("card_fav")}: <b>{(S.settings.gpu_selection ?? "").split(",").filter(Boolean).join(", ") || S.t("card_fav_auto")}</b> · <button class="ghost small" onclick={() => (S.page = "gpu")}>{S.t("card_change")}</button></div>
     <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_models")}</span>
       <select value={S.settings.card_models ?? "both"} onchange={(e) => S.set("card_models", e.currentTarget.value)} style="width:auto">
         <option value="auto">{S.t("card_models_auto")}</option><option value="both">{S.t("card_models_both")}</option><option value="wan">{S.t("card_models_wan")}</option><option value="flux">{S.t("card_models_flux")}</option>
+      </select></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_max")}</span>
+      <select value={S.settings.card_max ?? "2"} onchange={(e) => S.set("card_max", e.currentTarget.value)} style="width:auto">
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+      </select></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("image_card")}</span>
+      <select value={S.settings.image_card ?? "on"} onchange={(e) => S.set("image_card", e.currentTarget.value)} style="width:auto">
+        <option value="on">{S.t("image_card_on")}</option><option value="off">{S.t("image_card_off")}</option>
       </select></div>
     <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_auto")}</span>
       <select value={S.settings.auto_close_min ?? "10"} onchange={(e) => S.set("auto_close_min", e.currentTarget.value)} style="width:auto">

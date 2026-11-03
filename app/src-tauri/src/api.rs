@@ -216,19 +216,33 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
         ("GET", ["v1", "vast"]) => {
             let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
             let cards = st.vast.instances(&key).await?;
-            let (ready_flag, progress) = crate::card::state();
-            let ready = ready_flag && cards.iter().any(|c| c.label == crate::card::LABEL && c.status == "running");
-            Ok(json!({ "ready": ready, "progress": if ready { String::new() } else { progress }, "cards": cards, "starting": crate::warm_state() == "preparing", "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()) }))
+            let (_, progress) = crate::card::state();
+            let meta: Value = st.db.kv_get("cards").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({}));
+            let list: Vec<Value> = cards.iter().map(|c| {
+                let ours = c.label == crate::card::LABEL;
+                let packs = meta[c.id.to_string()]["packs"].as_str().unwrap_or("");
+                let kind = if !ours { "other" } else if packs.contains("wan22") { "video" } else if packs.is_empty() { "unknown" } else { "images" };
+                let ready = ours && c.status == "running" && crate::card::is_ready(c.id);
+                let mut v = serde_json::to_value(c).unwrap_or(json!({}));
+                v["ready"] = json!(ready);
+                v["in_use"] = json!(crate::card::in_use(c.id));
+                v["kind"] = json!(kind);
+                v
+            }).collect();
+            let ready = list.iter().any(|c| c["ready"] == json!(true));
+            Ok(json!({ "ready": ready, "progress": if list.iter().all(|c| c["ready"] == json!(true)) { String::new() } else { progress }, "cards": list, "starting": crate::warm_state() == "preparing", "card_max": crate::card::card_max(&st), "image_card": st.db.kv_get("image_card").unwrap_or_else(|| "on".into()), "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()), "note": "ready is per card: a card can take work only when its own ready is true. kind video = Wan (+FLUX), images = picture-only card." }))
         }
         ("POST", ["v1", "card", "start"]) => {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first (a card costs money while it runs), then call again with user_confirmed=true.".into()); }
-            if crate::warm_state() == "preparing" { return Ok(json!({ "message": "A card is already starting." })); }
+            let extra = body["new_card"] == json!(true);
+            if crate::warm_state() == "preparing" && !extra { return Ok(json!({ "message": "A card is already starting. To start one more at the same time, call again with new_card=true." })); }
             let h = app.clone();
             let (wfs, _) = st.load_workflows();
             let wf = match body["workflow_id"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_workflow(&wfs, q, "i2v")?), None => None };
             let gpu = match body["gpu"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_gpu(&st, q).await?.0), None => None };
-            tauri::async_runtime::spawn(async move { let _ = crate::run_warm_with(&h, wf, gpu).await; });
-            Ok(json!({ "message": "Starting a card. Check vast_running until ready is true (status running alone is NOT enough: the models are still downloading, about 10-25 minutes; progress shows what it is doing), then send the videos. The app closes the card by itself when nothing happens for a while." }))
+            let image = matches!(body["kind"].as_str(), Some("image" | "images"));
+            tauri::async_runtime::spawn(async move { let _ = crate::run_warm_with(&h, wf, gpu, image, extra).await; });
+            Ok(json!({ "message": "Starting a card. Check vast_running until that card shows ready=true (status running alone is NOT enough: the models are still downloading, about 10-25 minutes for video, less for a picture-only card; progress shows what it is doing), then send the jobs. Jobs run in parallel on separate ready cards, up to card_max. The app closes idle cards by itself and checks every card each minute." }))
         }
         ("POST", ["v1", "vast", "stop"]) => {
             if body["user_confirmed"] != json!(true) { return Err("Ask the user first, then call again with user_confirmed=true.".into()); }
@@ -455,6 +469,19 @@ async fn set_defaults(st: &AppState, b: &Value) -> Result<Value, String> {
         st.db.kv_set("default_model", &family).map_err(|x| x.to_string())?;
         st.db.kv_set("last_workflow", &id).map_err(|x| x.to_string())?;
         report.insert("model".into(), json!(family));
+    }
+    if let Some(n) = b["card_max"].as_i64() {
+        let n = n.clamp(1, 4);
+        st.db.kv_set("card_max", &n.to_string()).map_err(|x| x.to_string())?;
+        report.insert("card_max".into(), json!(n));
+    }
+    if let Some(v) = b["image_card"].as_bool() {
+        st.db.kv_set("image_card", if v { "on" } else { "off" }).map_err(|x| x.to_string())?;
+        report.insert("image_card".into(), json!(v));
+    }
+    if let Some(n) = b["auto_close_min"].as_i64().filter(|n| matches!(*n, 0 | 5 | 10 | 30)) {
+        st.db.kv_set("auto_close_min", &n.to_string()).map_err(|x| x.to_string())?;
+        report.insert("auto_close_min".into(), json!(n));
     }
     Ok(Value::Object(report))
 }

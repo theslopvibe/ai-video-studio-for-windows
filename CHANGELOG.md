@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- **Several cloud cards at the same time.** Videos now run in parallel on separate cards, up to "Cards at the same time" (Models page, 1-4, default 2). Before, everything waited in one line on one card. A card in use is never given to a second job; an idle card with the right models is reused; extra cards are rented only when needed.
+- **Pictures-only card.** Text → Image jobs get their own cheap FLUX-only card (about 12 GB to download instead of about 50 GB), so pictures start much faster. Turn it off with "Pictures" on the Models page. New buttons: "Start another card (video)" and "Start a pictures-only card".
+- **Cards are checked every minute.** The app closes a card that Vast stopped, that stopped answering for 3 minutes, that was never ready after 45 minutes, or that is idle for the auto-close time, and shows a notification. A dead card no longer bills for hours. During the first download the log is checked every 8-30 seconds (was up to 2 minutes).
+- **Everything works from Claude chat.** `card_start` has `kind` ("video"/"image") and `new_card` (a second card in parallel); `set_defaults` sets `card_max`, `image_card`, `auto_close_min`; `vast_running` shows each card with its own `ready`, `in_use` and `kind`. MCP package 0.3.3.
+
 ## 0.7.15
 
 - Every new cloud card now runs a speed test first (200 MB from the model server). A card that downloads slower than about 400 Mbit/s is closed within a minute and the next one is rented, instead of waiting 40 minutes. The advertised "1 Gbit/s" of a machine is often not what you really get.

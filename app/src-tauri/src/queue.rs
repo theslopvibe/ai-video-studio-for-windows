@@ -41,33 +41,79 @@ pub fn fmt_secs(s: u64) -> String {
     format!("{}:{:02}", s / 60, s % 60)
 }
 
-/// Background loop: one job at a time, oldest first.
+#[derive(Clone, Copy, PartialEq)]
+enum Class {
+    /// rented Vast card: up to `card_max` at once
+    Card,
+    /// this PC's GPU, the serverless Vast endpoint: one at a time
+    Single,
+    /// hosted APIs (fal, Replicate): they run on the provider's side
+    Hosted,
+}
+
+fn class_of(st: &AppState, job: &Job) -> Class {
+    let hosted = st.load_workflows().0.into_iter().any(|w| w.meta.id == job.workflow_id && !w.meta.provider.is_empty());
+    if hosted {
+        Class::Hosted
+    } else if job_provider(st, job) == "local" || st.db.kv_get("vast_mode").as_deref() == Some("serverless") {
+        Class::Single
+    } else {
+        Class::Card
+    }
+}
+
+/// A job that uses the result of an earlier job ("job:<id>") has to wait until that one is finished.
+fn waits_for_earlier(st: &AppState, job: &Job) -> bool {
+    let p: Map<String, Value> = serde_json::from_str(&job.params).unwrap_or_default();
+    p.values().filter_map(|v| v.as_str()).filter_map(|v| v.strip_prefix("job:")).any(|id| st.db.job(id.trim()).is_some_and(|j| matches!(j.status.as_str(), "queued" | "routing" | "generating" | "downloading")))
+}
+
+/// Background loop: oldest job first; card jobs run side by side (up to `card_max` cards), the rest as before.
 pub async fn run_loop(app: AppHandle) {
+    let running: Arc<std::sync::Mutex<Vec<(String, Class)>>> = Default::default();
     loop {
-        let job = app.state::<AppState>().db.next_queued();
-        match job {
-            Some(j) => {
+        let st = app.state::<AppState>();
+        let max_cards = crate::card::card_max(&st);
+        let mut started = false;
+        for j in st.db.queued_all() {
+            let class = class_of(&st, &j);
+            {
+                let r = running.lock().unwrap();
+                let n = r.iter().filter(|x| x.1 == class).count();
+                let limit = match class { Class::Card => max_cards, Class::Single => 1, Class::Hosted => 4 };
+                if n >= limit || waits_for_earlier(&st, &j) {
+                    continue;
+                }
+            }
+            running.lock().unwrap().push((j.id.clone(), class));
+            set(&app, &j.id, "routing", "Starting…", "");
+            started = true;
+            let (app2, running2) = (app.clone(), running.clone());
+            tauri::async_runtime::spawn(async move {
                 let flag = Arc::new(AtomicBool::new(false));
-                app.state::<AppState>().cancels.lock().unwrap().insert(j.id.clone(), flag.clone());
+                app2.state::<AppState>().cancels.lock().unwrap().insert(j.id.clone(), flag.clone());
                 crate::log::info(&format!(
                     "job {} start · mode={} · gpu={} · prompt={}",
                     j.id.chars().take(8).collect::<String>(), j.workflow_id, j.gpu, j.prompt.chars().take(100).collect::<String>()
                 ));
-                let res = run_job(&app, &j, &flag).await;
-                app.state::<AppState>().cancels.lock().unwrap().remove(&j.id);
-                let st = app.state::<AppState>();
+                let res = run_job(&app2, &j, &flag).await;
+                app2.state::<AppState>().cancels.lock().unwrap().remove(&j.id);
+                let st = app2.state::<AppState>();
                 let _ = st.db.set_job_times(&j.id, None, Some(now()));
                 match res {
                     Ok(()) => {}
                     Err(e) if flag.load(Ordering::Relaxed) => {
                         let _ = e;
-                        set(&app, &j.id, "cancelled", "", "");
+                        set(&app2, &j.id, "cancelled", "", "");
                     }
-                    Err(e) => set(&app, &j.id, "failed", "", &e),
+                    Err(e) => set(&app2, &j.id, "failed", "", &e),
                 }
-                emit(&app, &j.id);
-            }
-            None => tokio::time::sleep(Duration::from_millis(700)).await,
+                emit(&app2, &j.id);
+                running2.lock().unwrap().retain(|x| x.0 != j.id);
+            });
+        }
+        if !started {
+            tokio::time::sleep(Duration::from_millis(700)).await;
         }
     }
 }
@@ -296,7 +342,8 @@ async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<Str
         .unwrap_or_default();
     let (a, id) = (app.clone(), job.id.clone());
     let say = move |m: &str| set(&a, &id, "routing", m, "");
-    let card = crate::card::ensure(&st, &gpu, packs, cancel, &say).await?;
+    let image = st.load_workflows().0.iter().any(|w| w.meta.id == job.workflow_id && matches!(w.meta.kind.as_str(), "t2i" | "i2i"));
+    let card = crate::card::ensure(&st, &gpu, packs, crate::card::Want { image, extra: false, job: true }, cancel, &say).await?;
     crate::card::notify_ready(app, &card);
     {
         use tauri::Emitter;
