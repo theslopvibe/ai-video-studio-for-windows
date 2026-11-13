@@ -26,3 +26,6 @@ tags: [ai-video-studio, decisions]
 - **Keys never leave the app** — API/MCP/logs never return them; Claude and ZCode talk only to the local API (127.0.0.1 + token).
 - **No default spend limit** (user choice); optional `runpod_cap_usd`, settable only inside the app; unreadable value = 5 USD.
 - **One button connects Claude Desktop and ZCode** (writes their config files) instead of extension file / Node.
+
+- **Two RunPod slots instead of a profile list** (2026-11-13) — the need is exactly two accounts (owner + Antonis); slot 1 keeps the old setting names so nothing migrates. Only the app UI and `set_defaults` can switch; the key of the inactive one is never used.
+
