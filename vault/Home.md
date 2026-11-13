@@ -16,6 +16,7 @@ Windows desktop app (Tauri 2 + Rust + Svelte 5): prompt → mp4 using **Wan 2.2*
 - [[Known limits]] — what is NOT verified
 - [[Dev how-to]] — build, run, paths, pitfalls
 - [[Next steps]] — first real run checklist and backlog
+- [[Research - Vast alternatives and face swap]] — RunPod/Modal serverless comparison, backend vs BYO key, Wan Animate face swap (2026-11-13)
 
 Repo root: `E:\claude\video-generator` (`app/` code, `dist/` installer, `PLAN.md`, `README.md` (Greek, user-facing), `memory.md` (handoff)).
 

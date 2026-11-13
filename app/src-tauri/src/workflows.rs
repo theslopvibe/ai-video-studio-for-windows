@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn i2v_bundled_workflows_take_the_image() {
-        for f in ["wan22-i2v-lightning.json", "wan22-ti2v-5b.json", "ltxv-i2v.json"] {
+        for f in ["wan22-i2v-lightning.json", "wan22-ti2v-5b.json", "ltxv-i2v.json", "ltx25-i2v.json", "minimax-h3-i2v.json"] {
             let w = wf(f);
             assert!(w.meta.inputs.iter().any(|i| i.ty == "image"), "{f} has no image input");
             let mut p = Map::new();
@@ -442,6 +442,30 @@ mod tests {
             assert!(filled.to_string().contains("AIVSLoadImageBase64"), "{f}");
             assert!(filled.to_string().contains("QUJD"), "{f}");
             assert!(!filled.to_string().contains("{{"), "{f}");
+        }
+    }
+
+    #[test]
+    fn sound_video_workflows_fill_cleanly_and_end_in_createvideo_with_audio() {
+        for f in ["ltx25-t2v.json", "ltx25-i2v.json", "minimax-h3-t2v.json", "minimax-h3-i2v.json"] {
+            let w = wf(f);
+            let graph = w.workflow.to_string();
+            for i in w.meta.inputs.iter().filter(|i| i.key != "prompt") {
+                assert!(graph.contains(&format!("{{{{{}}}}}", i.key)), "{f}: input {} is not used", i.key);
+            }
+            let mut p = Map::new();
+            for i in &w.meta.inputs {
+                p.insert(i.key.clone(), match i.ty.as_str() { "image" => json!("QUJD"), _ => i.default.clone() });
+            }
+            let filled = fill(&w, &p);
+            assert!(!filled.to_string().contains("{{"), "{f}: unfilled placeholder");
+            let obj = filled.as_object().unwrap();
+            // the app swaps SaveVideo for the inline save node via CreateVideo, so both must exist and CreateVideo must carry the audio
+            assert_eq!(obj.values().filter(|n| n["class_type"] == "SaveVideo").count(), 1, "{f}");
+            let cv: Vec<_> = obj.values().filter(|n| n["class_type"] == "CreateVideo").collect();
+            assert_eq!(cv.len(), 1, "{f}");
+            assert!(cv[0]["inputs"].get("audio").is_some(), "{f}: no audio into CreateVideo");
+            assert_eq!(w.meta.kind, if f.contains("i2v") { "i2v" } else { "t2v" });
         }
     }
 

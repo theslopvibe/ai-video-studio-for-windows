@@ -7,6 +7,8 @@ tags: [ai-video-studio, todo]
 ---
 # Next steps
 
+See also: [[Research - Vast alternatives and face swap]] (replace Vast cards with serverless, add face swap; validation test first), [[Research - Beam and Modal]] (deep dive: Modal H100 first test, Beam only 4090 serverless).
+
 ## Status 2026-10-29 (late)
 Vast key is stored in the app and works, but the account has **no endpoint `comfyui-json`**. Next: Settings → «Δημιούργησε το endpoint αυτόματα» (untested; ask user first) or create it in the Vast console (template «Wan 2.2 14B t2v (Serverless)», creator 62897). Then follow the list below. On any failure: read the newest `report-*.txt` from `%APPDATA%\com.aivideostudio.app\logs` (Logs page → «Φτιάξε αναφορά»).
 

@@ -206,6 +206,68 @@
   ]
  },
  {
+  "id": "ltx25-22b",
+  "name": "LTX-2.5 22B distilled (video + sound, int8)",
+  "kind": "video",
+  "license": "LTX-2 Community License — free under 10M USD revenue",
+  "vram_gb": 32,
+  "size_gb": 39.7,
+  "desc_el": "LTX-2.5 της Lightricks (22B, distilled, int8): βίντεο με ήχο από κείμενο ή εικόνα, υψηλή ποιότητα, 8+3 βήματα. Βαρύ πακέτο ~40 GB· θέλει κάρτα 32 GB (δεν έχει μετρηθεί ακόμα). Θέλει ComfyUI 0.32+. Άδεια LTX-2 Community: δωρεάν κάτω από 10M USD έσοδα.",
+  "desc_en": "Lightricks LTX-2.5 (22B, distilled, int8): video with sound from text or image, high quality, 8+3 steps. Heavy ~40 GB pack; wants a 32 GB card (not measured yet). Needs ComfyUI 0.32+. LTX-2 Community License: free under 10M USD revenue.",
+  "in_template": false,
+  "files": [
+   {
+    "dir": "diffusion_models",
+    "url": "https://huggingface.co/comfyicu/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"
+   },
+   {
+    "dir": "text_encoders",
+    "url": "https://huggingface.co/comfyicu/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/comfyicu/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/comfyicu/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors"
+   },
+   {
+    "dir": "latent_upscale_models",
+    "url": "https://huggingface.co/comfyicu/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+   }
+  ]
+ },
+ {
+  "id": "minimax-h3",
+  "name": "MiniMax H3 (video + sound, int8)",
+  "kind": "video",
+  "license": "MiniMax H3 Community License — check terms before commercial use",
+  "vram_gb": 32,
+  "size_gb": 42.5,
+  "desc_el": "MiniMax H3 (int8): βίντεο με ήχο από κείμενο ή πρώτο καρέ, 5-15 s. Πολύ βαρύ πακέτο ~42 GB· θέλει κάρτα 32 GB και είναι αργό (VRAM και χρόνος δεν έχουν μετρηθεί). Θέλει ComfyUI 0.30+. Άδεια MiniMax H3 Community: έλεγξε τους όρους πριν από εμπορική χρήση.",
+  "desc_en": "MiniMax H3 (int8): video with sound from text or a first frame, 5-15 s. Very heavy ~42 GB pack; wants a 32 GB card and is slow (VRAM and time not measured). Needs ComfyUI 0.30+. MiniMax H3 Community License: check the terms before commercial use.",
+  "in_template": false,
+  "files": [
+   {
+    "dir": "diffusion_models",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+   },
+   {
+    "dir": "text_encoders",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors"
+   },
+   {
+    "dir": "vae",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+   }
+  ]
+ },
+ {
   "id": "ace-step",
   "name": "ACE-Step 3.5B (music)",
   "kind": "audio",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- **Two new video models to try: LTX-2.5 and MiniMax H3** (text → video and picture → video, with sound). Both are big (about 40 GB each) and need a card with at least 32-48 GB. They are new and not measured yet, so speed and quality may change. Install them on the Models page or ask Claude to start a card with them. MiniMax H3 has its own community licence: read it before using videos commercially. LTX-2.5 files come from an unofficial mirror of the Lightricks release.
+
 ## 0.8.0
 
 - **Several cloud cards at the same time.** Videos now run in parallel on separate cards, up to "Cards at the same time" (Models page, 1-4, default 2). Before, everything waited in one line on one card. A card in use is never given to a second job; an idle card with the right models is reused; extra cards are rented only when needed.
