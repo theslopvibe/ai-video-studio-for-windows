@@ -168,7 +168,11 @@ pub fn session_usd() -> f64 {
 /// Spend guard: the most USD one app session may spend on RunPod (setting runpod_cap_usd, default 0 = no limit).
 /// It can only be changed in the app's own Settings, never through the Claude/ZCode connection.
 pub fn cap_usd(v: Option<String>) -> f64 {
-    v.and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok()).filter(|d| d.is_finite() && *d >= 0.0).unwrap_or(0.0)
+    // unset or empty = no limit (the owner's choice); a value that is set but unreadable falls back to a safe 5 USD instead of "no limit"
+    match v.as_deref().map(str::trim) {
+        None | Some("") => 0.0,
+        Some(t) => t.replace(',', ".").parse::<f64>().ok().filter(|d| d.is_finite() && *d >= 0.0).unwrap_or(5.0),
+    }
 }
 
 pub fn over_cap(spent: f64, next: f64, cap: f64) -> bool {
@@ -404,7 +408,8 @@ mod tests {
     fn spend_cap_blocks_only_above_the_limit() {
         assert_eq!(cap_usd(None), 0.0);
         assert_eq!(cap_usd(Some("2,5".into())), 2.5);
-        assert_eq!(cap_usd(Some("abc".into())), 0.0);
+        assert_eq!(cap_usd(Some("abc".into())), 5.0);
+        assert_eq!(cap_usd(Some("".into())), 0.0);
         assert!(!over_cap(4.0, 0.9, 5.0));
         assert!(over_cap(4.5, 0.9, 5.0));
         assert!(!over_cap(99.0, 5.0, 0.0));
