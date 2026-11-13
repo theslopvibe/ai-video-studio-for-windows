@@ -127,9 +127,9 @@ const TOOLS = [
   {
     name: "set_defaults",
     description:
-      "Change the app's defaults for all later videos (same as the settings in the app). model: free text like \"ltx\" or \"wan\". provider: \"runpod\" (cloud, default) or \"local\" (the user's PC). auto_sleep_min: minutes with an empty queue before RunPod goes to sleep (0 = never).",
-    inputSchema: { type: "object", properties: { model: { type: "string" }, provider: { type: "string", enum: ["runpod", "local"], description: "Default place to run open-source modes." }, auto_sleep_min: { type: "integer", description: "Put RunPod to sleep after the queue has been empty for this many minutes (0 = never)." } } },
-    run: (a) => call("POST", "/v1/settings", { model: a.model, provider: a.provider, auto_sleep_min: a.auto_sleep_min }),
+      "Change the app's defaults for all later videos (same as the settings in the app). model: free text like \"ltx\" or \"wan\". provider: \"runpod\" (cloud, default) or \"local\" (the user's PC). auto_sleep_min: minutes with an empty queue before RunPod goes to sleep (0 = never). runpod_instance: the app can hold two separate RunPod instances (for example two accounts with their own billing); give 1, 2 or the instance name to switch which one runs everything. video_studio_status and runpod_status show the one in use (runpod_instance_name) and the configured ones (instances). Never switch instance unless the user asks.",
+    inputSchema: { type: "object", properties: { model: { type: "string" }, provider: { type: "string", enum: ["runpod", "local"], description: "Default place to run open-source modes." }, auto_sleep_min: { type: "integer", description: "Put RunPod to sleep after the queue has been empty for this many minutes (0 = never)." }, runpod_instance: { type: "string", description: "Which RunPod instance to use: 1, 2 or its name." } } },
+    run: (a) => call("POST", "/v1/settings", { model: a.model, provider: a.provider, auto_sleep_min: a.auto_sleep_min, runpod_instance: a.runpod_instance }),
   },
   {
     name: "get_job",

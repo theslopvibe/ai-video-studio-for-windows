@@ -69,7 +69,7 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
             }
             call(c, "POST", "/v1/jobs", Some(body)).await
         }
-        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "provider": a["provider"], "auto_sleep_min": a["auto_sleep_min"] }))).await,
+        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "provider": a["provider"], "auto_sleep_min": a["auto_sleep_min"], "runpod_instance": a["runpod_instance"] }))).await,
         "get_job" => {
             let id = a["job_id"].as_str().ok_or("job_id is required")?;
             let until = std::time::Instant::now() + std::time::Duration::from_secs(a["wait_seconds"].as_u64().unwrap_or(0).min(45));

@@ -199,7 +199,9 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
             Ok(json!({
                 "app_version": env!("CARGO_PKG_VERSION"),
                 "secrets": secrets::status(),
-                "runpod_endpoint_id": st.db.kv_get("runpod_endpoint_id").unwrap_or_default(),
+                "runpod_endpoint_id": runpod::endpoint_id(&st),
+                "runpod_instance": runpod::active_slot(&st),
+                "runpod_instance_name": runpod::slot_name(&st, runpod::active_slot(&st)),
                 "default_workflow": st.db.kv_get("last_workflow").unwrap_or_default(),
                 "default_provider": default_provider(&st),
                 "local_installed": crate::local::installed(&crate::local::portable_dir(&st)),
@@ -385,6 +387,13 @@ async fn set_defaults(st: &AppState, b: &Value) -> Result<Value, String> {
         st.db.kv_set("default_model", &family).map_err(|x| x.to_string())?;
         st.db.kv_set("last_workflow", &id).map_err(|x| x.to_string())?;
         report.insert("model".into(), json!(family));
+    }
+    if let Some(q) = b["runpod_instance"].as_str().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).or_else(|| b["runpod_instance"].as_i64().map(|n| n.to_string())) {
+        let slot: u8 = if q == "1" { 1 } else if q == "2" { 2 } else if q == runpod::slot_name(st, 1).to_lowercase() { 1 } else if q == runpod::slot_name(st, 2).to_lowercase() { 2 } else { return Err(format!("Unknown RunPod instance {q}. Use 1, 2 or the instance name.")) };
+        runpod::creds_slot(st, slot)?;
+        st.db.kv_set("runpod_active", &slot.to_string()).map_err(|x| x.to_string())?;
+        runpod::instance_changed();
+        report.insert("runpod_instance".into(), json!(runpod::slot_name(st, slot)));
     }
     if let Some(n) = b["auto_sleep_min"].as_i64().filter(|n| (0..=240).contains(n)) {
         st.db.kv_set("runpod_sleep_min", &n.to_string()).map_err(|x| x.to_string())?;

@@ -175,6 +175,7 @@ async fn run_hosted(app: &AppHandle, job: &Job, wf: &workflows::Workflow, params
     let st = app.state::<AppState>();
     let m = &wf.meta;
     let secret = crate::hosted::secret_name(&m.provider).ok_or_else(|| format!("Unknown provider {}", m.provider))?;
+    let secret = if m.provider == "runpod" { crate::runpod::secret_of(crate::runpod::active_slot(&st)) } else { secret };
     let key = secrets::get(secret).ok_or_else(|| format!("Missing {} key. Add it in Settings → Cloud providers.", m.provider))?;
     set(app, &job.id, "routing", &format!("Sending to {}…", m.provider), "");
     let (a, id, prov) = (app.clone(), job.id.clone(), m.provider.clone());
@@ -183,7 +184,7 @@ async fn run_hosted(app: &AppHandle, job: &Job, wf: &workflows::Workflow, params
     let (bytes, ext) = if m.provider == "runpod" {
         // RunPod gets the filled ComfyUI graph itself, not a request template; the cost is the measured one.
         // The endpoint is woken first when it is asleep (the user never has to press anything).
-        let endpoint = st.db.kv_get("runpod_endpoint_id").filter(|s| !s.trim().is_empty()).ok_or("Missing RunPod endpoint id. Add it in Settings → Cloud providers.")?;
+        let endpoint = Some(crate::runpod::endpoint_id(&st)).filter(|s| !s.trim().is_empty()).ok_or("Missing RunPod endpoint id. Add it in Settings → Cloud providers.")?;
         let dph = st.db.kv_get("runpod_gpu_dph").and_then(|s| s.trim().parse::<f64>().ok()).filter(|d| *d > 0.0).unwrap_or(crate::hosted::RUNPOD_DEFAULT_DPH);
         let (a2, id2) = (app.clone(), job.id.clone());
         let note = move |t: &str| set(&a2, &id2, "routing", t, "");

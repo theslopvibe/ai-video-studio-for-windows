@@ -16,6 +16,7 @@ pub const NAMES: &[&str] = &[
     "fal_key",
     "replicate_token",
     "runpod_api_key",
+    "runpod_api_key_2",
 ];
 
 fn entry(name: &str) -> Result<keyring::Entry> {

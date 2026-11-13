@@ -41,7 +41,21 @@ class Store {
   }
   /** RunPod needs both the API key and the endpoint id. */
   get runpodReady(): boolean {
-    return !!this.secrets.runpod_api_key && !!(this.settings.runpod_endpoint_id ?? "").trim();
+    return !!this.secrets[this.rpKeyName] && !!(this.settings[this.rpEndpointName] ?? "").trim();
+  }
+  /** Which of the two RunPod instances is in use (1 or 2), and the names of its key and endpoint-id settings. */
+  get rpSlot(): 1 | 2 {
+    return this.settings.runpod_active === "2" ? 2 : 1;
+  }
+  get rpKeyName(): string {
+    return this.rpSlot === 2 ? "runpod_api_key_2" : "runpod_api_key";
+  }
+  get rpEndpointName(): string {
+    return this.rpSlot === 2 ? "runpod_endpoint_id_2" : "runpod_endpoint_id";
+  }
+  /** Display name of an instance. */
+  rpName(slot: 1 | 2): string {
+    return (this.settings["runpod_name_" + slot] ?? "").trim() || "Instance " + slot;
   }
   /** The mode that really runs: an open-source mode becomes its RunPod twin ("runpod-<id>") when the job runs on RunPod. */
   effective(id: string, provider: string = this.provider): Workflow | undefined {

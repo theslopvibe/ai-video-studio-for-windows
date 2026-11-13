@@ -79,11 +79,16 @@
     S.refreshRunpod();
   }
   async function saveRunpodKey() {
-    await saveKey("runpod_api_key", rpKey); rpKey = "";
-    if (S.secrets.runpod_api_key) await testRunpod();
+    await saveKey(S.rpKeyName, rpKey); rpKey = "";
+    if (S.secrets[S.rpKeyName]) await testRunpod();
   }
   async function saveEndpointId(v: string) {
-    await S.set("runpod_endpoint_id", v.trim());
+    await S.set(S.rpEndpointName, v.trim());
+    S.refreshRunpod();
+  }
+  async function pickInstance(v: string) {
+    await S.set("runpod_active", v);
+    rpRes = null;
     S.refreshRunpod();
   }
   async function chooseDir() {
@@ -130,9 +135,19 @@
     <h2>{ct(S.lang, "rp_title")}</h2>
     <p class="small dim">{ct(S.lang, "rp_intro")}</p>
     <div class="field">
-      <label for="rpk">{ct(S.lang, "rp_key_label")} <span class="pill {S.secrets.runpod_api_key ? 'ok' : 'warn'}">{S.secrets.runpod_api_key ? S.t("set") : S.t("not_set")}</span></label>
+      <label for="rpi">{S.lang === "el" ? "Instance RunPod που χρησιμοποιείται" : "RunPod instance in use"}</label>
       <div class="row">
-        <input id="rpk" type="password" bind:value={rpKey} placeholder={S.secrets.runpod_api_key ? "••••••••••••" : ""} autocomplete="off" />
+        <select id="rpi" value={String(S.rpSlot)} onchange={(e) => pickInstance(e.currentTarget.value)} style="width:auto">
+          <option value="1">{S.rpName(1)}</option><option value="2">{S.rpName(2)}</option>
+        </select>
+        <input value={S.settings["runpod_name_" + S.rpSlot] ?? ""} placeholder={S.lang === "el" ? "Όνομα (π.χ. Αντώνης)" : "Name (e.g. Antonis)"} onchange={(e) => S.set("runpod_name_" + S.rpSlot, e.currentTarget.value.trim())} autocomplete="off" style="max-width:220px" />
+      </div>
+      <div class="small dim">{S.lang === "el" ? "Δύο ξεχωριστά RunPod (π.χ. δύο λογαριασμοί με δική τους χρέωση). Τα πεδία παρακάτω αφορούν αυτό που έχεις επιλέξει, και αυτό χρησιμοποιούν το πρόγραμμα, το Claude και το GLM. Ο καθένας βάζει στο δικό του endpoint ό,τι μοντέλα θέλει." : "Two separate RunPods (for example two accounts with their own billing). The fields below belong to the one selected, and that is the one the app, Claude and GLM use. Each can hold whatever models you want on its own endpoint."}</div>
+    </div>
+    <div class="field">
+      <label for="rpk">{ct(S.lang, "rp_key_label")} <span class="pill {S.secrets[S.rpKeyName] ? 'ok' : 'warn'}">{S.secrets[S.rpKeyName] ? S.t("set") : S.t("not_set")}</span></label>
+      <div class="row">
+        <input id="rpk" type="password" bind:value={rpKey} placeholder={S.secrets[S.rpKeyName] ? "••••••••••••" : ""} autocomplete="off" />
         <button onclick={saveRunpodKey} disabled={!rpKey || busy === "rp"}>{ct(S.lang, "save_test")}</button>
       </div>
       <div class="small dim">{ct(S.lang, "rp_key_help")}</div>
@@ -140,7 +155,7 @@
     <div class="field">
       <label for="rpe">{ct(S.lang, "rp_endpoint")}</label>
       <div class="row">
-        <input id="rpe" value={S.settings.runpod_endpoint_id ?? ""} onchange={(e) => saveEndpointId(e.currentTarget.value)} autocomplete="off" />
+        <input id="rpe" value={S.settings[S.rpEndpointName] ?? ""} onchange={(e) => saveEndpointId(e.currentTarget.value)} autocomplete="off" />
         <button onclick={testRunpod} disabled={busy === "rp" || !S.runpodReady}>{busy === "rp" ? S.t("testing") : ct(S.lang, "rp_test")}</button>
       </div>
       <div class="small dim">{ct(S.lang, "rp_endpoint_help")}</div>
@@ -311,7 +326,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.4" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.5" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

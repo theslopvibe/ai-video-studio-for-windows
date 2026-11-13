@@ -128,7 +128,7 @@
   }
 
   async function submit() {
-    const KEY_OF: Record<string, string> = { runpod: "runpod_api_key", fal: "fal_key", replicate: "replicate_token", openai: "openai_api_key", gemini: "gemini_api_key" };
+    const KEY_OF: Record<string, string> = { fal: "fal_key", replicate: "replicate_token", openai: "openai_api_key", gemini: "gemini_api_key" };
     const prov = wf?.meta.provider;
     if (prov === "runpod" && !S.runpodReady) { S.notify(ct(S.lang, "rp_need"), true); S.page = "settings"; return; }
     if (prov && KEY_OF[prov] && !S.secrets[KEY_OF[prov]]) { S.notify(S.t("need_key"), true); S.page = "settings"; return; }

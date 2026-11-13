@@ -115,11 +115,11 @@ async fn call(req: reqwest::RequestBuilder) -> Result<Value, String> {
 
 // ---- the current ceiling is cached for a few seconds so a status chip that polls does not hammer the REST API
 
-static CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
+static CACHE: Mutex<Option<(Instant, u64, String)>> = Mutex::new(None);
 const CACHE_TTL: Duration = Duration::from_secs(10);
 
-fn cache_set(max: u64) {
-    *CACHE.lock().unwrap() = Some((Instant::now(), max));
+fn cache_set(id: &str, max: u64) {
+    *CACHE.lock().unwrap() = Some((Instant::now(), max, id.to_string()));
 }
 
 /// Current `workers.max` straight from RunPod.
@@ -129,13 +129,13 @@ pub async fn get_max(key: &str, id: &str) -> Result<u64, String> {
     }
     let ep = call(client()?.get(endpoint_url(id)).bearer_auth(key)).await?;
     let max = parse_max(&ep).ok_or("RunPod: the endpoint answer has no worker settings.")?;
-    cache_set(max);
+    cache_set(id, max);
     Ok(max)
 }
 
 pub async fn get_max_cached(key: &str, id: &str) -> Result<u64, String> {
-    if let Some((t, m)) = *CACHE.lock().unwrap() {
-        if t.elapsed() < CACHE_TTL {
+    if let Some((t, m, cached_id)) = CACHE.lock().unwrap().clone() {
+        if t.elapsed() < CACHE_TTL && cached_id == id {
             return Ok(m);
         }
     }
@@ -147,7 +147,7 @@ pub async fn set_max(key: &str, id: &str, max: u64) -> Result<(), String> {
         return Err("RunPod: the endpoint id looks wrong. Check it in Settings.".into());
     }
     call(client()?.patch(endpoint_url(id)).bearer_auth(key).json(&workers_body(max))).await?;
-    cache_set(max);
+    cache_set(id, max);
     Ok(())
 }
 
@@ -218,11 +218,47 @@ fn since_touch() -> Duration {
 static WAKE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static ASLEEP_KNOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Credentials from the app's settings: (key, endpoint id).
-pub fn creds(st: &AppState) -> Result<(String, String), String> {
-    let key = crate::secrets::get("runpod_api_key").ok_or("The RunPod API key is missing. Add it in Settings.")?;
-    let id = st.db.kv_get("runpod_endpoint_id").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).ok_or("The RunPod endpoint id is missing. Add it in Settings.")?;
+// ---- two RunPod instances (for example two accounts with separate billing). Slot 1 keeps the original setting names.
+
+/// The instance in use: setting `runpod_active` ("1" or "2", default 1).
+pub fn active_slot(st: &AppState) -> u8 {
+    if st.db.kv_get("runpod_active").as_deref().map(str::trim) == Some("2") { 2 } else { 1 }
+}
+
+pub fn secret_of(slot: u8) -> &'static str {
+    if slot == 2 { "runpod_api_key_2" } else { "runpod_api_key" }
+}
+
+pub fn endpoint_setting(slot: u8) -> &'static str {
+    if slot == 2 { "runpod_endpoint_id_2" } else { "runpod_endpoint_id" }
+}
+
+/// Display name of an instance (setting runpod_name_1 / runpod_name_2).
+pub fn slot_name(st: &AppState, slot: u8) -> String {
+    st.db.kv_get(&format!("runpod_name_{slot}")).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| format!("Instance {slot}"))
+}
+
+/// Credentials of one instance: (key, endpoint id).
+pub fn creds_slot(st: &AppState, slot: u8) -> Result<(String, String), String> {
+    let key = crate::secrets::get(secret_of(slot)).ok_or("The RunPod API key is missing. Add it in Settings.")?;
+    let id = st.db.kv_get(endpoint_setting(slot)).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).ok_or("The RunPod endpoint id is missing. Add it in Settings.")?;
     Ok((key, id))
+}
+
+/// Credentials of the instance in use.
+pub fn creds(st: &AppState) -> Result<(String, String), String> {
+    creds_slot(st, active_slot(st))
+}
+
+/// Endpoint id of the instance in use ("" when none).
+pub fn endpoint_id(st: &AppState) -> String {
+    st.db.kv_get(endpoint_setting(active_slot(st))).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+/// Called when the user switches instance: the other one may still be awake, so the sleep checks must run again.
+pub fn instance_changed() {
+    ASLEEP_KNOWN.store(false, Ordering::Relaxed);
+    touch();
 }
 
 /// "Wake up RunPod": raises the worker ceiling to 1 unless it is already above 0.
@@ -281,6 +317,7 @@ fn runpod_jobs(st: &AppState, running_only: bool) -> usize {
 
 /// Everything the UI, the chat and the MCP tools show about RunPod.
 pub async fn status(st: &AppState) -> Result<Value, String> {
+    let slot = active_slot(st);
     let (key, id) = creds(st)?;
     let max = get_max_cached(&key, &id).await?;
     let working = runpod_jobs(st, true) > 0;
@@ -289,6 +326,12 @@ pub async fn status(st: &AppState) -> Result<Value, String> {
         "state": state_name(max, working),
         "workers_max": max,
         "endpoint_id": id,
+        "instance": slot,
+        "instance_name": slot_name(st, slot),
+        "instances": [
+            {"slot": 1, "name": slot_name(st, 1), "configured": creds_slot(st, 1).is_ok()},
+            {"slot": 2, "name": slot_name(st, 2), "configured": creds_slot(st, 2).is_ok()},
+        ],
         "jobs_waiting": runpod_jobs(st, false),
         "session_usd": (session_usd() * 1000.0).round() / 1000.0,
         "usd_per_hour_while_working": rate,
@@ -313,17 +356,27 @@ pub async fn auto_sleep_loop(app: AppHandle) {
         if !sleep_due(last_active.elapsed().min(since_touch()), limit) || ASLEEP_KNOWN.load(Ordering::Relaxed) {
             continue;
         }
-        let Ok((key, id)) = creds(&st) else { continue };
-        match get_max(&key, &id).await {
-            Ok(0) => ASLEEP_KNOWN.store(true, Ordering::Relaxed),
-            Ok(_) => {
-                crate::log::info(&format!("runpod: queue empty for {limit} min, putting the endpoint to sleep"));
-                if sleep(&key, &id).await.is_ok() {
-                    use tauri::Emitter;
-                    let _ = app.emit("runpod-slept", ());
+        let mut all_asleep = true;
+        for slot in [1u8, 2] {
+            let Ok((key, id)) = creds_slot(&st, slot) else { continue };
+            match get_max(&key, &id).await {
+                Ok(0) => {}
+                Ok(_) => {
+                    all_asleep = false;
+                    crate::log::info(&format!("runpod: queue empty for {limit} min, putting instance {slot} to sleep"));
+                    if sleep(&key, &id).await.is_ok() {
+                        use tauri::Emitter;
+                        let _ = app.emit("runpod-slept", ());
+                    }
+                }
+                Err(e) => {
+                    all_asleep = false;
+                    crate::log::info(&format!("runpod: auto-sleep check failed: {e}"));
                 }
             }
-            Err(e) => crate::log::info(&format!("runpod: auto-sleep check failed: {e}")),
+        }
+        if all_asleep {
+            ASLEEP_KNOWN.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -333,10 +386,12 @@ pub async fn sleep_on_exit(st: &AppState) {
     if st.db.kv_get("runpod_sleep_on_exit").as_deref() == Some("0") {
         return;
     }
-    let Ok((key, id)) = creds(st) else { return };
     let _ = tokio::time::timeout(Duration::from_secs(10), async {
-        if matches!(get_max(&key, &id).await, Ok(m) if m > 0) {
-            let _ = sleep(&key, &id).await;
+        for slot in [1u8, 2] {
+            let Ok((key, id)) = creds_slot(st, slot) else { continue };
+            if matches!(get_max(&key, &id).await, Ok(m) if m > 0) {
+                let _ = sleep(&key, &id).await;
+            }
         }
     })
     .await;
@@ -402,6 +457,19 @@ mod tests {
         assert!(!sleep_due(Duration::from_secs(3600), 0));
         assert!(!sleep_due(Duration::from_secs(299), 5));
         assert!(sleep_due(Duration::from_secs(300), 5));
+    }
+
+    #[test]
+    fn two_instances_use_separate_settings_and_secrets() {
+        assert_eq!(secret_of(1), "runpod_api_key");
+        assert_eq!(secret_of(2), "runpod_api_key_2");
+        assert_eq!(endpoint_setting(1), "runpod_endpoint_id");
+        assert_eq!(endpoint_setting(2), "runpod_endpoint_id_2");
+        assert!(crate::secrets::NAMES.contains(&secret_of(2)));
+        // a cached ceiling must never be used for another endpoint
+        cache_set("aaa", 1);
+        let c = CACHE.lock().unwrap().clone().unwrap();
+        assert!(c.2 == "aaa" && c.2 != "bbb");
     }
 
     #[test]

@@ -11,7 +11,7 @@
 {#if S.runpodReady}
   <div class="chip" class:live={st === "awake" || st === "working"} class:work={st === "working"} title={tip}>
     <span class="dot"></span>
-    <span>{label}</span>
+    <span>{S.rpName(S.rpSlot)}: {label}</span>
     {#if S.rp}<span class="dim">· ${S.rp.session_usd.toFixed(2)}</span>{/if}
     {#if st === "asleep"}
       <button class="ghost small" onclick={() => S.runpodWake()} disabled={S.rpBusy}>{ct(S.lang, "rp_wake")}</button>

@@ -85,7 +85,7 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 const SETTING_KEYS: &[&str] = &[
     "lang", "out_dir", "anthropic_model", "last_project",
     "last_workflow", "models_selected", "enhance_provider", "claude_model", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled",
-    "runpod_endpoint_id", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
+    "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_name_1", "runpod_name_2", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
 ];
 
 #[derive(Serialize)]
@@ -245,6 +245,9 @@ fn setting_set(st: State<AppState>, app: AppHandle, key: String, value: String) 
     st.db.kv_set(&key, &value).map_err(e)?;
     if key == "out_dir" {
         st.sync_asset_scope(&app);
+    }
+    if key == "runpod_active" {
+        runpod::instance_changed();
     }
     if key == "api_enabled" {
         api::set_enabled(&app, value == "1");
@@ -708,9 +711,9 @@ fn import_settings(st: State<AppState>, path: String) -> R<()> {
 
 #[tauri::command]
 async fn hosted_test(st: State<'_, AppState>, provider: String) -> R<String> {
-    let secret = hosted::secret_name(&provider).ok_or("Unknown provider")?;
+    let secret = if provider == "runpod" { runpod::secret_of(runpod::active_slot(&st)) } else { hosted::secret_name(&provider).ok_or("Unknown provider")? };
     let key = secrets::get(secret).ok_or("Save the key first.")?;
-    let id = st.db.kv_get("runpod_endpoint_id").unwrap_or_default();
+    let id = runpod::endpoint_id(&st);
     let ok = hosted::test_key(&provider, &key, &id).await?;
     if provider == "runpod" {
         // /health only proves the key may run jobs; waking and sleeping the endpoint needs read and write access to it
