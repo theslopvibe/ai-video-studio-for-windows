@@ -21,3 +21,8 @@ tags: [ai-video-studio, decisions]
 - Vast: one rented instance instead of serverless; deleted when idle (10 min) because a stopped one still bills ~29 USD/month for 110 GB.
 - Extension (.mcpb) and Connect-Claude.bat ship inside the installer (resources/connect) and are explained in Settings; Claude Code uses `claude mcp add ai-video-studio -- "<app.exe>" --mcp`.
 - One update per feature batch (user wish): test on a real card before releasing.
+
+- **2026-11-13: RunPod Serverless replaces Vast** — per-second billing, models on a network volume (nothing downloaded per video), endpoint sleeps via workers.max 0 so nothing bills. Vast storage billed when stopped and re-downloads were slow.
+- **Keys never leave the app** — API/MCP/logs never return them; Claude and ZCode talk only to the local API (127.0.0.1 + token).
+- **No default spend limit** (user choice); optional `runpod_cap_usd`, settable only inside the app; unreadable value = 5 USD.
+- **One button connects Claude Desktop and ZCode** (writes their config files) instead of extension file / Node.

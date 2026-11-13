@@ -9,7 +9,8 @@ Windows desktop app (Tauri 2 + Rust + Svelte 5): prompt → mp4 using **Wan 2.2*
 
 ## Map
 - [[Architecture]] — modules, data flow, where state lives
-- [[Vast protocol]] — route → worker, template/workergroup APIs, what is verified
+- [[RunPod]] — current cloud backend since 0.9.0 (Vast removed)
+- [[Vast protocol]] (history) — route → worker, template/workergroup APIs, what is verified
 - [[Features]] — every UI page and the code behind it
 - [[Decisions]] — why Tauri, why local-save node, why Claude Code CLI, etc.
 - [[Testing]] — unit tests, mock server, CDP e2e
