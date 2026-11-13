@@ -1,9 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
-import { api, type Bootstrap, type Job, type Project, type Workflow } from "./api";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { ct } from "./chatStrings";
+import { api, type Bootstrap, type Job, type Project, type RunpodStatus, type Workflow } from "./api";
 import { tr, type Key, type Lang } from "./i18n";
 
 export type Theme = "dark" | "light" | "system";
-export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "gpu" | "models" | "guide" | "editor" | "logs" | "settings";
+export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "models" | "guide" | "editor" | "logs" | "settings";
 
 class Store {
   ready = $state(false);
@@ -33,8 +35,49 @@ class Store {
 
   t = (k: Key) => tr(this.lang, k);
 
-  get dph(): number {
-    return parseFloat(this.settings.dph_estimate ?? "") || 0;
+  /** Where open-source modes run by default: RunPod (cloud, automatic) unless the user chose this PC. */
+  get provider(): "runpod" | "local" {
+    return this.settings.provider === "local" ? "local" : "runpod";
+  }
+  /** RunPod needs both the API key and the endpoint id. */
+  get runpodReady(): boolean {
+    return !!this.secrets.runpod_api_key && !!(this.settings.runpod_endpoint_id ?? "").trim();
+  }
+  /** The mode that really runs: an open-source mode becomes its RunPod twin ("runpod-<id>") when the job runs on RunPod. */
+  effective(id: string, provider: string = this.provider): Workflow | undefined {
+    const w = this.workflows.find((x) => x.meta.id === id);
+    if (w && !w.meta.provider && provider === "runpod") return this.workflows.find((x) => x.meta.id === "runpod-" + id && x.meta.provider === "runpod") ?? w;
+    return w;
+  }
+  /** Typical price of one result in USD (0 = free, it runs on this PC). */
+  estimate(id: string, provider: string = this.provider): number {
+    return this.effective(id, provider)?.meta.est_usd ?? 0;
+  }
+
+  // RunPod status for the header chip and the RunPod panels; refreshed every 20 s and after every wake / sleep
+  rp = $state<RunpodStatus | null>(null);
+  rpError = $state("");
+  rpBusy = $state(false);
+  private rpTimer: ReturnType<typeof setInterval> | undefined;
+  async refreshRunpod() {
+    if (!this.runpodReady) { this.rp = null; this.rpError = ""; return; }
+    try { this.rp = await api.runpodStatus(); this.rpError = ""; } catch (e) { this.rp = null; this.rpError = String(e); }
+  }
+  async runpodWake() {
+    this.rpBusy = true;
+    try { this.notify(await api.runpodWake()); } catch (e) { this.notify(String(e), true); }
+    this.rpBusy = false;
+    await this.refreshRunpod();
+  }
+  async runpodSleepAsk() {
+    if (this.rp?.state === "working" && !(await ask(ct(this.lang, "rp_sleep_confirm"), { kind: "warning" }))) return;
+    await this.runpodSleep();
+  }
+  async runpodSleep() {
+    this.rpBusy = true;
+    try { this.notify(await api.runpodSleep()); } catch (e) { this.notify(String(e), true); }
+    this.rpBusy = false;
+    await this.refreshRunpod();
   }
   get active(): Job | undefined {
     return this.jobs.find((j) => ["routing", "generating", "downloading"].includes(j.status));
@@ -62,12 +105,15 @@ class Store {
     this.jobs = await api.jobs();
     if (!this.listening) {
       this.listening = true;
-      await listen<Job>("job-update", (e) => this.upsert(e.payload));
+      await listen<Job>("job-update", (e) => { this.upsert(e.payload); this.refreshRunpod(); });
+      await listen("runpod-slept", () => this.refreshRunpod());
+      this.rpTimer = setInterval(() => this.refreshRunpod(), 20000);
     }
-    // first run: the setup wizard. People who already use a Vast key skip it.
-    if (!this.ready && !b.settings.setup_done && !this.secrets.vast_api_key) this.wizard = true;
-    else if (!this.ready && !this.secrets.vast_api_key && b.settings.provider !== "local") this.page = "settings";
+    // first run: the setup wizard. People who already use RunPod skip it.
+    if (!this.ready && !b.settings.setup_done && !this.secrets.runpod_api_key) this.wizard = true;
+    else if (!this.ready && !this.secrets.runpod_api_key && b.settings.provider !== "local") this.page = "settings";
     this.ready = true;
+    this.refreshRunpod();
   }
 
   upsert(j: Job) {

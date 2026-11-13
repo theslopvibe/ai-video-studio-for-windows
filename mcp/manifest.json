@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "ai-video-studio",
   "display_name": "AI Video Studio For Windows",
-  "version": "0.3.3",
-  "description": "Φτιάξε AI video (LTX-Video, Wan 2.2) μέσα από το chat του Claude, με το πρόγραμμα AI Video Studio For Windows.",
-  "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio For Windows που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο Vast.ai, και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
+  "version": "0.4.0",
+  "description": "Φτιάξε AI video (Wan 2.2, LTX 2.5 και άλλα) μέσα από το chat του Claude, με το πρόγραμμα AI Video Studio For Windows.",
+  "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio For Windows που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο RunPod (ξυπνά και κοιμάται αυτόματα, πληρώνεις μόνο όσο φτιάχνεται το video), και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
   "author": {
     "name": "AI Video Studio For Windows"
   },
@@ -28,8 +28,16 @@
       "description": "Διαθέσιμα μοντέλα/τρόποι"
     },
     {
-      "name": "list_gpus",
-      "description": "Κάρτες γραφικών και τιμές"
+      "name": "runpod_status",
+      "description": "Αν το RunPod κοιμάται, είναι ξύπνιο ή δουλεύει, και πόσα έχουν ξοδευτεί (USD)"
+    },
+    {
+      "name": "runpod_wake",
+      "description": "Ξύπνα το RunPod"
+    },
+    {
+      "name": "runpod_sleep",
+      "description": "Βάλε το RunPod για ύπνο (σταματά κάθε χρέωση)"
     },
     {
       "name": "generate_video",
@@ -37,7 +45,7 @@
     },
     {
       "name": "set_defaults",
-      "description": "Αλλαγή προεπιλεγμένου μοντέλου/κάρτας"
+      "description": "Αλλαγή προεπιλεγμένου μοντέλου, πού τρέχει (RunPod ή PC) και αυτόματου ύπνου"
     },
     {
       "name": "get_job",
@@ -54,18 +62,6 @@
     {
       "name": "retry_job",
       "description": "Επανάληψη αποτυχημένου"
-    },
-    {
-      "name": "card_start",
-      "description": "Ξεκίνα και ετοίμασε μια κάρτα στο Vast"
-    },
-    {
-      "name": "vast_running",
-      "description": "Τι κάρτες τρέχουν και χρεώνονται στο Vast"
-    },
-    {
-      "name": "vast_stop",
-      "description": "Κλείσιμο κάρτας για να σταματήσει η χρέωση"
     },
     {
       "name": "make_report",

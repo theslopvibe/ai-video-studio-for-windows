@@ -1,0 +1,180 @@
+{
+ "meta": {
+  "id": "runpod-flux3-klein-t2i",
+  "name_en": "RunPod · Text → Image: FLUX.3 klein",
+  "name_el": "RunPod · Κείμενο → Εικόνα: FLUX.3 klein",
+  "desc_en": "Runs on your RunPod Serverless endpoint (models live on its network volume, nothing is installed by the app). Pay per second of GPU time, about $0.02 per result (FLUX.3 klein image, measured ~48 s on an A40).",
+  "desc_el": "Τρέχει στο RunPod Serverless endpoint σου (τα μοντέλα είναι στον network volume του, η εφαρμογή δεν εγκαθιστά τίποτα). Πληρώνεις ανά δευτερόλεπτο GPU, περίπου $0.02 ανά αποτέλεσμα.",
+  "kind": "t2i",
+  "models": [],
+  "pack": "",
+  "vram_gb": 48,
+  "est_sec": 108,
+  "priority": 160,
+  "inputs": [
+   {
+    "key": "prompt",
+    "type": "text",
+    "label_en": "Prompt",
+    "label_el": "Prompt",
+    "required": true
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "label_en": "Width",
+    "label_el": "Πλάτος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 16
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "label_en": "Height",
+    "label_el": "Ύψος",
+    "default": 1024,
+    "min": 512,
+    "max": 2048,
+    "step": 16
+   },
+   {
+    "key": "steps",
+    "type": "int",
+    "label_en": "Steps (4-16)",
+    "label_el": "Βήματα (4-16)",
+    "default": 16,
+    "min": 4,
+    "max": 16,
+    "step": 1
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "label_en": "Seed (blank = random)",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "default": "__RANDOM_INT__"
+   }
+  ],
+  "provider": "runpod",
+  "model": "",
+  "request": {},
+  "est_usd": 0.016,
+  "license": "paid"
+ },
+ "workflow": {
+  "1": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "flux3-image-klein-int8-convrot.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen3vl_4b_int8_convrot.safetensors",
+    "type": "flux3",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "flux2-vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "ModelSamplingFlux",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "max_shift": 2.77259,
+    "base_shift": 2.77259,
+    "width": "{{width}}",
+    "height": "{{height}}"
+   }
+  },
+  "5": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "EmptyFlux2LatentImage",
+   "inputs": {
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "batch_size": 1
+   }
+  },
+  "8": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": "{{seed}}",
+    "steps": "{{steps}}",
+    "cfg": 1,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1,
+    "model": [
+     "4",
+     0
+    ],
+    "positive": [
+     "5",
+     0
+    ],
+    "negative": [
+     "6",
+     0
+    ],
+    "latent_image": [
+     "7",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "8",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "10": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "aivs",
+    "images": [
+     "9",
+     0
+    ]
+   }
+  }
+ }
+}

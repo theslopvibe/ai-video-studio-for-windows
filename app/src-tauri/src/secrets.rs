@@ -5,6 +5,7 @@ const SERVICE: &str = "AIVideoStudio";
 
 /// Names the UI is allowed to store. Values never travel back to the UI.
 pub const NAMES: &[&str] = &[
+    // legacy: the app no longer uses Vast.ai; the name stays so an old saved key can still be read, replaced or cleared
     "vast_api_key",
     "anthropic_api_key",
     "gemini_api_key",
@@ -14,6 +15,7 @@ pub const NAMES: &[&str] = &[
     "openrouter_api_key",
     "fal_key",
     "replicate_token",
+    "runpod_api_key",
 ];
 
 fn entry(name: &str) -> Result<keyring::Entry> {

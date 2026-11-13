@@ -5,7 +5,7 @@ use serde_json::{json, Map, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-pub const PROVIDERS: &[(&str, &str)] = &[("fal", "fal_key"), ("replicate", "replicate_token"), ("openai", "openai_api_key"), ("gemini", "gemini_api_key")];
+pub const PROVIDERS: &[(&str, &str)] = &[("fal", "fal_key"), ("replicate", "replicate_token"), ("openai", "openai_api_key"), ("gemini", "gemini_api_key"), ("runpod", "runpod_api_key")];
 
 pub fn secret_name(provider: &str) -> Option<&'static str> {
     PROVIDERS.iter().find(|(p, _)| *p == provider).map(|(_, s)| *s)
@@ -195,10 +195,156 @@ pub async fn run(provider: &str, model: &str, key: &str, body: &Value, cancel: &
     download(&url).await
 }
 
-/// Cheap key check used by the wizard and Settings.
-pub async fn test_key(provider: &str, key: &str) -> Result<String, String> {
+const RUNPOD_API: &str = "https://api.runpod.ai/v2";
+/// Serverless A40 price per hour (USD), the default for the `runpod_gpu_dph` setting.
+pub const RUNPOD_DEFAULT_DPH: f64 = 1.22;
+
+/// RunPod worker-comfyui request body from a filled ComfyUI API graph. Random seeds are resolved here. Inline images
+/// (our `AIVSLoadImageBase64` node, or a `LoadImage` whose image is base64 data instead of a file name) become a plain
+/// `LoadImage` with a generated file name, and the data moves into `input.images` (the worker has no AIVS nodes).
+pub fn runpod_body(graph: &Value) -> Value {
+    let mut g = graph.clone();
+    crate::local::randomize_seeds(&mut g);
+    let mut images: Vec<Value> = vec![];
+    if let Some(obj) = g.as_object_mut() {
+        let mut ids: Vec<String> = obj.keys().cloned().collect();
+        ids.sort_by_key(|k| k.parse::<u64>().unwrap_or(u64::MAX));
+        for id in ids {
+            let node = &mut obj[&id];
+            let data = match node["class_type"].as_str() {
+                Some("AIVSLoadImageBase64") => node["inputs"]["image_b64"].as_str().map(String::from),
+                Some("LoadImage") => node["inputs"]["image"].as_str().filter(|s| s.len() > 256).map(String::from),
+                _ => None,
+            };
+            if let Some(d) = data.filter(|d| !d.is_empty()) {
+                let name = format!("aivs_input_{}.png", images.len() + 1);
+                node["class_type"] = json!("LoadImage");
+                node["inputs"] = json!({ "image": name });
+                images.push(json!({ "name": name, "image": d }));
+            }
+        }
+    }
+    let mut input = json!({ "workflow": g });
+    if !images.is_empty() {
+        input["images"] = Value::Array(images);
+    }
+    json!({ "input": input, "policy": { "executionTimeout": 1_200_000 } })
+}
+
+/// File bytes and extension from a COMPLETED RunPod status (`output.images[]`, base64 data, ext from the file name).
+/// A video wins over an image when the worker returns both.
+pub fn runpod_extract(status: &Value) -> Result<(Vec<u8>, String), String> {
+    use base64::Engine;
+    let imgs = status["output"]["images"].as_array().filter(|a| !a.is_empty()).ok_or_else(|| format!("RunPod finished but returned no file: {}", status["output"].to_string().chars().take(300).collect::<String>()))?;
+    let ext_of = |i: &Value| i["filename"].as_str().and_then(|f| f.rsplit_once('.')).map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+    let pick = imgs.iter().find(|i| matches!(ext_of(i).as_str(), "mp4" | "webm" | "mov" | "gif")).unwrap_or(&imgs[0]);
+    let data = pick["data"].as_str().ok_or("RunPod returned the file as a link, not as data. Use a worker-comfyui build that returns base64.")?;
+    let data = data.split_once("base64,").map(|(_, d)| d).unwrap_or(data);
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("bad RunPod file data: {e}"))?;
+    let ext = Some(ext_of(pick)).filter(|e| !e.is_empty()).unwrap_or_else(|| if bytes.starts_with(&[0xFF, 0xD8]) { "jpg" } else { "png" }.into());
+    Ok((bytes, ext))
+}
+
+/// Cost of one RunPod job in USD: billed execution time at the GPU's hourly rate. Cold start (`delayTime`, which also
+/// includes queue waiting) is deliberately not counted, so this is a lower bound; the real bill is on the RunPod dashboard.
+pub fn runpod_cost(status: &Value, dph: f64) -> f64 {
+    status["executionTime"].as_f64().unwrap_or(0.0) / 1000.0 * dph / 3600.0
+}
+
+fn runpod_err(status: &Value) -> String {
+    let e = &status["error"];
+    let msg = e.as_str().map(String::from).unwrap_or_else(|| if e.is_null() { status["output"]["error"].as_str().unwrap_or("the job failed").to_string() } else { e.to_string() });
+    format!("RunPod: {msg}")
+}
+
+/// Sends one RunPod request; returns the HTTP status and the JSON body (a transport failure is the only error).
+async fn rp_send(r: reqwest::RequestBuilder) -> Result<(u16, Value), String> {
+    let resp = r.send().await.map_err(|e| format!("RunPod: {e}"))?;
+    let status = resp.status().as_u16();
+    // a finished video comes back as several MB of base64 inside the JSON; no size cap here
+    Ok((status, resp.json().await.unwrap_or(Value::Null)))
+}
+
+fn rp_check(status: u16, body: Value) -> Result<Value, String> {
+    if (200..300).contains(&status) {
+        return Ok(body);
+    }
+    let msg = body["error"].as_str().map(String::from).unwrap_or_else(|| body.to_string());
+    Err(match status {
+        401 | 403 => format!("RunPod: the API key was rejected. Check it in Settings. ({msg})"),
+        404 => format!("RunPod: endpoint not found. Check the endpoint id in Settings. ({msg})"),
+        _ => format!("RunPod: HTTP {status} {msg}"),
+    })
+}
+
+async fn rp_json(r: reqwest::RequestBuilder) -> Result<Value, String> {
+    let (status, body) = rp_send(r).await?;
+    rp_check(status, body)
+}
+
+/// Runs a filled ComfyUI graph on a RunPod Serverless worker-comfyui endpoint. Returns (bytes, ext, cost in USD).
+/// The endpoint is woken by the caller (`runpod::ensure_awake`); right after a wake-up the runtime answers 409 for a while,
+/// so the submit is retried with backoff (`runpod::retry_delay`, 90 s in total). `note` receives a short status text.
+pub async fn run_runpod(endpoint: &str, key: &str, graph: &Value, dph: f64, cancel: &AtomicBool, tick: &(dyn Fn(u64) + Sync), note: &(dyn Fn(&str) + Sync)) -> Result<(Vec<u8>, String, f64), String> {
+    let t0 = Instant::now();
+    let c = reqwest::Client::builder().user_agent("AI-Video-Studio").timeout(Duration::from_secs(300)).build().map_err(|e| e.to_string())?;
+    let auth = format!("Bearer {key}");
+    let body = runpod_body(graph);
+    let mut attempt = 0u32;
+    let sub = loop {
+        let (status, resp) = rp_send(c.post(format!("{RUNPOD_API}/{endpoint}/run")).header("Authorization", &auth).json(&body)).await?;
+        if !crate::runpod::is_paused(status) {
+            break rp_check(status, resp)?;
+        }
+        let Some(d) = crate::runpod::retry_delay(attempt, t0.elapsed()) else {
+            return Err("RunPod is asleep and did not wake up within 90 seconds. Press \"Wake up RunPod\" in Settings and try again.".into());
+        };
+        attempt += 1;
+        note("Waking up RunPod…");
+        wait(cancel, tick, t0, d.as_secs()).await?;
+    };
+    let job = sub["id"].as_str().ok_or("RunPod returned no job id")?.to_string();
+    let mut failures = 0;
+    loop {
+        if let Err(e) = wait(cancel, tick, t0, 2).await {
+            let _ = c.post(format!("{RUNPOD_API}/{endpoint}/cancel/{job}")).header("Authorization", &auth).send().await;
+            return Err(e);
+        }
+        if t0.elapsed() > Duration::from_secs(30 * 60) {
+            let _ = c.post(format!("{RUNPOD_API}/{endpoint}/cancel/{job}")).header("Authorization", &auth).send().await;
+            return Err("RunPod took longer than 30 minutes.".into());
+        }
+        let s = match rp_json(c.get(format!("{RUNPOD_API}/{endpoint}/status/{job}")).header("Authorization", &auth)).await {
+            Ok(s) => { failures = 0; s }
+            // a dropped connection while polling should not lose a paid job
+            Err(e) if failures < 4 && !e.contains("rejected") && !e.contains("not found") => { failures += 1; continue; }
+            Err(e) => return Err(e),
+        };
+        match s["status"].as_str().unwrap_or("") {
+            "COMPLETED" => {
+                let (bytes, ext) = runpod_extract(&s)?;
+                return Ok((bytes, ext, runpod_cost(&s, dph)));
+            }
+            "FAILED" => return Err(runpod_err(&s)),
+            "CANCELLED" => return Err("RunPod: the job was cancelled.".into()),
+            "TIMED_OUT" => return Err("RunPod: the job timed out on the worker (20 minute limit).".into()),
+            _ => {}
+        }
+    }
+}
+
+/// Cheap key check used by the wizard and Settings. `extra` is the RunPod endpoint id (ignored by the others).
+pub async fn test_key(provider: &str, key: &str, extra: &str) -> Result<String, String> {
     let c = client();
     match provider {
+        "runpod" => {
+            let id = extra.trim();
+            if id.is_empty() {
+                return Err("RunPod: enter the endpoint id first.".into());
+            }
+            rp_json(c.get(format!("{RUNPOD_API}/{id}/health")).header("Authorization", format!("Bearer {key}"))).await?;
+            Ok("RunPod key and endpoint accepted".into())
+        }
         "replicate" => {
             http_json(c.get("https://api.replicate.com/v1/account").header("Authorization", format!("Bearer {key}")), "Replicate").await?;
             Ok("Replicate key accepted".into())
@@ -257,8 +403,66 @@ mod tests {
     }
 
     #[test]
+    fn runpod_body_moves_inline_images_and_resolves_seeds() {
+        let long = "A".repeat(400);
+        let g = json!({
+            "1": {"class_type": "KSampler", "inputs": {"seed": "__RANDOM_INT__", "steps": 4}},
+            "2": {"class_type": "AIVSLoadImageBase64", "inputs": {"image_b64": "QUJD"}},
+            "3": {"class_type": "LoadImage", "inputs": {"image": long}},
+            "4": {"class_type": "LoadImage", "inputs": {"image": "already_on_worker.png"}}
+        });
+        let b = runpod_body(&g);
+        assert!(b["input"]["workflow"]["1"]["inputs"]["seed"].is_i64());
+        assert_eq!(b["input"]["workflow"]["2"]["class_type"], "LoadImage");
+        assert_eq!(b["input"]["workflow"]["2"]["inputs"]["image"], "aivs_input_1.png");
+        assert_eq!(b["input"]["workflow"]["3"]["inputs"]["image"], "aivs_input_2.png");
+        assert_eq!(b["input"]["workflow"]["4"]["inputs"]["image"], "already_on_worker.png");
+        let imgs = b["input"]["images"].as_array().unwrap();
+        assert_eq!(imgs.len(), 2);
+        assert_eq!(imgs[0], json!({"name": "aivs_input_1.png", "image": "QUJD"}));
+        assert_eq!(b["policy"]["executionTimeout"], 1_200_000);
+        assert!(runpod_body(&json!({"1": {"class_type": "KSampler", "inputs": {}}}))["input"].get("images").is_none());
+    }
+
+    #[test]
+    fn runpod_result_is_extracted_and_costed() {
+        let st = json!({"status": "COMPLETED", "delayTime": 40000, "executionTime": 185000,
+            "output": {"images": [{"filename": "aivs_00001_.mp4", "type": "base64", "data": "QUJD"}]}});
+        let (bytes, ext) = runpod_extract(&st).unwrap();
+        assert_eq!((bytes.as_slice(), ext.as_str()), (&b"ABC"[..], "mp4"));
+        let png = json!({"output": {"images": [{"filename": "a.PNG", "type": "base64", "data": "QUJD"}]}});
+        assert_eq!(runpod_extract(&png).unwrap().1, "png");
+        assert!(runpod_extract(&json!({"output": {}})).is_err());
+        assert!((runpod_cost(&st, 1.22) - 185.0 * 1.22 / 3600.0).abs() < 1e-9);
+        assert_eq!(runpod_err(&json!({"error": "missing model x.safetensors"})), "RunPod: missing model x.safetensors");
+    }
+
+    #[test]
     fn secret_names_exist() {
+        assert_eq!(secret_name("runpod"), Some("runpod_api_key"));
         assert_eq!(secret_name("fal"), Some("fal_key"));
         assert_eq!(secret_name("nope"), None);
     }
+
+    /// Real RunPod run: wake, one FLUX image through run_runpod, sleep. Costs about 0.02 USD. Run with --ignored --nocapture.
+    #[tokio::test]
+    #[ignore = "spends real RunPod money"]
+    async fn real_runpod_flux_roundtrip() {
+        let key = std::fs::read_to_string(dirs_home().join(".aivs-keys").join("runpod_api_key.txt")).unwrap().trim().to_string();
+        let id = "n1q8r5vkmex43u";
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("workflows");
+        let (all, _) = crate::workflows::load_all(&dir, &dir.join("none"));
+        let wf = all.iter().find(|w| w.meta.id == "runpod-flux3-klein-t2i").unwrap();
+        let mut p = Map::new();
+        p.insert("prompt".into(), json!("a red fox in the snow"));
+        let graph = crate::workflows::fill(wf, &p);
+        println!("{}", crate::runpod::wake(&key, id).await.unwrap());
+        let cancel = AtomicBool::new(false);
+        let r = run_runpod(id, &key, &graph, 1.22, &cancel, &|s| println!("tick {s}"), &|m| println!("note {m}")).await;
+        println!("{}", crate::runpod::sleep(&key, id).await.unwrap());
+        let (bytes, ext, cost) = r.unwrap();
+        std::fs::write(std::env::temp_dir().join(format!("aivs_real.{ext}")), &bytes).unwrap();
+        println!("OK bytes={} ext={ext} cost={cost}", bytes.len());
+    }
+    fn dirs_home() -> std::path::PathBuf { std::path::PathBuf::from(std::env::var("USERPROFILE").unwrap()) }
 }

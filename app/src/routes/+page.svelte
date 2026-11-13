@@ -5,7 +5,7 @@
   import Queue from "$lib/Queue.svelte";
   import Library from "$lib/Library.svelte";
   import Projects from "$lib/Projects.svelte";
-  import Gpu from "$lib/Gpu.svelte";
+  import RunpodChip from "$lib/RunpodChip.svelte";
   import Models from "$lib/Models.svelte";
   import Settings from "$lib/Settings.svelte";
   import Guide from "$lib/Guide.svelte";
@@ -31,8 +31,8 @@
     { id: "library", page: "library", key: "nav_library", icon: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>' },
     { id: "settings", page: "settings", key: "nav_settings", icon: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
   ];
-  const SETTINGS_TABS: { page: Page; key: "nav_settings" | "nav_models" | "nav_gpu" | "nav_projects" | "nav_guide" | "nav_logs" }[] = [
-    { page: "settings", key: "nav_settings" }, { page: "models", key: "nav_models" }, { page: "gpu", key: "nav_gpu" },
+  const SETTINGS_TABS: { page: Page; key: "nav_settings" | "nav_models" | "nav_projects" | "nav_guide" | "nav_logs" }[] = [
+    { page: "settings", key: "nav_settings" }, { page: "models", key: "nav_models" },
     { page: "projects", key: "nav_projects" }, { page: "guide", key: "nav_guide" }, { page: "logs", key: "nav_logs" },
   ];
   const group = (p: Page): Rail =>
@@ -70,6 +70,7 @@
         </label>
         <button class="ghost small" title={S.t("manage")} onclick={() => (S.page = "projects")}>＋ {S.t("manage")}</button>
         <span class="grow"></span>
+        <RunpodChip />
         {#if S.pending.length}
           <button class="tally" onclick={() => (S.page = "library")}><span class="dot"></span>{S.t("now_running")} · {S.pending.length}</button>
         {/if}
@@ -92,7 +93,6 @@
             <Library embedded />
           </div>
         {:else if S.page === "projects"}<Projects />
-        {:else if S.page === "gpu"}<Gpu />
         {:else if S.page === "models"}<Models />
         {:else if S.page === "guide"}<Guide />
         {:else if S.page === "editor"}<Editor />

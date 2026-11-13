@@ -48,7 +48,9 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
     match name {
         "video_studio_status" => call(c, "GET", "/v1/status", None).await,
         "list_workflows" => call(c, "GET", "/v1/workflows", None).await,
-        "list_gpus" => call(c, "GET", &format!("/v1/gpus?min_vram={}", a["min_vram"].as_f64().unwrap_or(0.0)), None).await,
+        "runpod_status" => call(c, "GET", "/v1/runpod/status", None).await,
+        "runpod_wake" => call(c, "POST", "/v1/runpod/wake", Some(json!({}))).await,
+        "runpod_sleep" => call(c, "POST", "/v1/runpod/sleep", Some(json!({}))).await,
         "generate_video" => {
             if !confirmed {
                 return Err("Ρώτα πρώτα τον χρήστη (με κόστος) και ξανακάλεσε με user_confirmed=true.".into());
@@ -60,14 +62,14 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
                 }
             }
             let mut body = json!({ "params": params });
-            for k in ["prompt", "kind", "provider", "image_path", "end_image_path", "workflow_id", "gpu", "project", "scene", "inputs"] {
+            for k in ["prompt", "kind", "provider", "image_path", "end_image_path", "workflow_id", "project", "scene", "inputs"] {
                 if !a[k].is_null() {
                     body[k] = a[k].clone();
                 }
             }
             call(c, "POST", "/v1/jobs", Some(body)).await
         }
-        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "gpu": a["gpu"], "card_max": a["card_max"], "image_card": a["image_card"], "auto_close_min": a["auto_close_min"] }))).await,
+        "set_defaults" => call(c, "POST", "/v1/settings", Some(json!({ "model": a["model"], "provider": a["provider"], "auto_sleep_min": a["auto_sleep_min"] }))).await,
         "get_job" => {
             let id = a["job_id"].as_str().ok_or("job_id is required")?;
             let until = std::time::Instant::now() + std::time::Duration::from_secs(a["wait_seconds"].as_u64().unwrap_or(0).min(45));
@@ -83,19 +85,6 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
         "list_jobs" => call(c, "GET", "/v1/jobs", None).await,
         "cancel_job" => call(c, "POST", &format!("/v1/jobs/{}/cancel", enc(a["job_id"].as_str().ok_or("job_id is required")?)), Some(json!({}))).await,
         "retry_job" => call(c, "POST", &format!("/v1/jobs/{}/retry", enc(a["job_id"].as_str().ok_or("job_id is required")?)), Some(json!({}))).await,
-        "card_start" => {
-            if !confirmed {
-                return Err("Ρώτα πρώτα τον χρήστη (η κάρτα κοστίζει όσο τρέχει) και ξανακάλεσε με user_confirmed=true.".into());
-            }
-            call(c, "POST", "/v1/card/start", Some(json!({ "user_confirmed": true, "workflow_id": a["workflow_id"], "gpu": a["gpu"], "kind": a["kind"], "new_card": a["new_card"] }))).await
-        }
-        "vast_running" => call(c, "GET", "/v1/vast", None).await,
-        "vast_stop" => {
-            if !confirmed {
-                return Err("Ρώτα πρώτα τον χρήστη και ξανακάλεσε με user_confirmed=true.".into());
-            }
-            call(c, "POST", "/v1/vast/stop", Some(json!({ "id": a["id"], "all": a["all"] == json!(true), "user_confirmed": true }))).await
-        }
         "make_report" => call(c, "POST", "/v1/report", Some(json!({}))).await,
         _ => Err(format!("Unknown tool {name}")),
     }

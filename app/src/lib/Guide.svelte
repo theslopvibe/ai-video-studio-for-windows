@@ -4,7 +4,7 @@
   import { loc } from "./translations";
 
   let open = $state("start");
-  const go = (page: "generate" | "models" | "settings" | "gpu") => (S.page = page);
+  const go = (page: "generate" | "models" | "settings") => (S.page = page);
 </script>
 
 <div class="page form">
@@ -26,7 +26,6 @@
         <div class="row" style="margin-top:10px">
           {#if g.id === "start"}
             <button onclick={() => go("settings")}>{S.t("nav_settings")}</button>
-            <button onclick={() => go("gpu")}>{S.t("nav_gpu")}</button>
             <button onclick={() => go("models")}>{S.t("nav_models")}</button>
           {/if}
           {#if g.id === "t2v" || g.id === "i2v"}<button class="primary" onclick={() => go("generate")}>{S.t("nav_generate")}</button>{/if}

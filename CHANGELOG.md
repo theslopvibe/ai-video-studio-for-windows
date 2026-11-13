@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- **Cloud GPU is now RunPod Serverless instead of Vast.ai.** No more renting and waiting for a card: you pay only for the seconds a video or picture takes (about $0.02 for a FLUX picture, $0.06 for a 5 s Wan video, measured on an A40). The models live on a RunPod network volume, so nothing is downloaded per video. Enter your RunPod key and endpoint id in Settings; the old Vast cards, GPU page and card settings are gone.
+- **Wake up / sleep.** The endpoint sleeps by itself (workers ceiling 0) so nothing can bill while you are away. It wakes when a job is sent, or with the "Wake up RunPod" button, and goes back to sleep after the idle time you choose or when the app closes. A chip shows the state and this session's spend.
+- **Five RunPod workflows:** FLUX.3 klein pictures, Wan 2.2 text → video and picture → video (lightning), LTX-2.5, MiniMax H3.
+- **Claude chat:** GLM default is now glm-5.1 (glm-5, glm-4.6, glm-4.5-air also listed; the live list from Z.ai is added). New MCP tools `runpod_status`, `runpod_wake`, `runpod_sleep` (MCP package 0.4.0).
+- Tested with a real endpoint: wake, one FLUX picture, sleep (about 85 s, $0.019).
+
 ## 0.8.1
 
 - **Two new video models to try: LTX-2.5 and MiniMax H3** (text → video and picture → video, with sound). Both are big (about 40 GB each) and need a card with at least 32-48 GB. They are new and not measured yet, so speed and quality may change. Install them on the Models page or ask Claude to start a card with them. MiniMax H3 has its own community licence: read it before using videos commercially. LTX-2.5 files come from an unofficial mirror of the Lightricks release.

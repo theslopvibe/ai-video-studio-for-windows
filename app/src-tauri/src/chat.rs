@@ -26,8 +26,8 @@ pub const PRESETS: &[Preset] = &[
     Preset { id: "anthropic", label: "Claude (API key)", kind: "anthropic", base: "", secret: "anthropic_api_key", model: "claude-sonnet-5-5", models: &["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
     Preset { id: "openai", label: "OpenAI GPT", kind: "openai", base: "https://api.openai.com/v1", secret: "openai_api_key", model: "gpt-4o-mini", models: &["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini"] },
     Preset { id: "gemini", label: "Google Gemini", kind: "gemini", base: "", secret: "gemini_api_key", model: "gemini-2.5-flash", models: &["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"] },
-    Preset { id: "glm", label: "Z.ai GLM", kind: "openai", base: "https://api.z.ai/api/paas/v4", secret: "glm_api_key", model: "glm-4.6", models: &["glm-4.6", "glm-4.5", "glm-4.5-air"] },
-    Preset { id: "glm_plan", label: "Z.ai GLM Coding Plan (subscription key)", kind: "openai", base: "https://api.z.ai/api/coding/paas/v4", secret: "glm_api_key", model: "glm-4.6", models: &["glm-4.6", "glm-4.5", "glm-4.5-air"] },
+    Preset { id: "glm", label: "Z.ai GLM", kind: "openai", base: "https://api.z.ai/api/paas/v4", secret: "glm_api_key", model: "glm-5.1", models: &["glm-5.1", "glm-5", "glm-4.6", "glm-4.5-air"] },
+    Preset { id: "glm_plan", label: "Z.ai GLM Coding Plan (subscription key)", kind: "openai", base: "https://api.z.ai/api/coding/paas/v4", secret: "glm_api_key", model: "glm-5.1", models: &["glm-5.1", "glm-5", "glm-4.6", "glm-4.5-air"] },
     Preset { id: "deepseek", label: "DeepSeek", kind: "openai", base: "https://api.deepseek.com", secret: "deepseek_api_key", model: "deepseek-chat", models: &["deepseek-chat", "deepseek-reasoner"] },
     Preset { id: "openrouter", label: "OpenRouter (many models)", kind: "openai", base: "https://openrouter.ai/api/v1", secret: "openrouter_api_key", model: "openai/gpt-4o-mini", models: &["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash", "deepseek/deepseek-chat", "z-ai/glm-4.6"] },
     Preset { id: "ollama", label: "Ollama (local, free)", kind: "openai", base: "http://localhost:11434/v1", secret: "", model: "llama3.2", models: &["llama3.2", "qwen2.5", "mistral"] },
@@ -472,7 +472,7 @@ pub fn studio_system(st: &AppState) -> String {
         let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image") && !k.starts_with("audio") && !k.starts_with("video")).collect();
         let needs: Vec<String> = m.inputs.iter().filter(|i| matches!(i.ty.as_str(), "image" | "audio" | "video")).map(|i| format!("{}:{}", i.key, i.ty)).collect();
         let langs = if m.languages.is_empty() { String::new() } else { format!(" | languages: {}", m.languages.join(", ")) };
-        let cost = if m.provider.is_empty() { format!("open source, ~{}s on a GPU", m.est_sec) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
+        let cost = if m.provider.is_empty() { format!("open source on the user's PC, ~{}s, free", m.est_sec) } else if m.provider == "runpod" { format!("RunPod cloud GPU (wakes up by itself), ~${:.2} per result", m.est_usd) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
         cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {} | inputs: {}{}
 ", plain(&m.id), plain(&m.name_en), plain(&m.kind), cost, plain(&m.good_en), plain(&keys.join(",")), if needs.is_empty() { "none".into() } else { plain(&needs.join(",")) }, plain(&langs)));
     }
@@ -487,7 +487,7 @@ The app shows the user a card with the price and a Generate button, so never say
 Default run mode: {}.
 Models (id | name | kind | cost | use | params):
 {}",
-        st.db.kv_get("provider").unwrap_or_else(|| "vast".into()),
+        if st.db.kv_get("provider").as_deref() == Some("local") { "this PC (open-source modes)" } else { "RunPod cloud (the RunPod modes)" },
         cat
     )
 }
@@ -524,7 +524,7 @@ mod tests {
         folder_create(&d, "Ideas").unwrap();
         let f = folders(&d).unwrap().remove(0);
         let a = chat_create(&d, &f.id, "openai", "", "chat").unwrap();
-        let b = chat_create(&d, "", "glm", "glm-4.6", "chat").unwrap();
+        let b = chat_create(&d, "", "glm", "glm-5.1", "chat").unwrap();
         assert_eq!(a.model, "gpt-4o-mini");
         add_message(&d, &a.id, "user", "Write a poem about foxes in the snow").unwrap();
         add_message(&d, &b.id, "user", "100% sure? use_underscore").unwrap();

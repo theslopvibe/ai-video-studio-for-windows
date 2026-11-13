@@ -41,9 +41,7 @@
   const wfOf = (id: string) => S.workflows.find((w) => w.meta.id === id);
   const wfName = (id: string) => { const w = wfOf(id); return w ? (S.lang === "el" ? w.meta.name_el : w.meta.name_en) : id; };
   function estimate(id: string) {
-    const w = wfOf(id);
-    if (!w) return 0;
-    return w.meta.provider ? (w.meta.est_usd ?? 0) : S.dph > 0 ? (w.meta.est_sec * S.dph) / 3600 : 0;
+    return S.estimate(id);
   }
   const MEDIA_TYPES = ["image", "audio", "video"];
   const slotsOf = (c: Card) => (wfOf(c.workflow)?.meta.inputs ?? []).filter((i) => MEDIA_TYPES.includes(i.type));

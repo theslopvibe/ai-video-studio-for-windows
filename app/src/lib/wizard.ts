@@ -35,8 +35,8 @@ export const W = {
   },
   cloud: { en: "Cloud GPU", el: "Cloud GPU" },
   cloud_d: {
-    en: "Rent a powerful GPU by the minute (about 5 to 50 cents per video). No strong PC needed.",
-    el: "Νοικιάζεις δυνατή GPU ανά λεπτό (περίπου 5 έως 50 λεπτά του δολαρίου ανά video). Δεν χρειάζεται δυνατός υπολογιστής.",
+    en: "Use a powerful cloud GPU on RunPod, billed by the second only while a video is made (a few cents to about 20 cents per video). No strong PC needed.",
+    el: "Χρησιμοποίησε μια δυνατή cloud GPU στο RunPod, με χρέωση ανά δευτερόλεπτο μόνο όσο φτιάχνεται το video (από λίγα σεντς έως περίπου 20 σεντς ανά video). Δεν χρειάζεται δυνατός υπολογιστής.",
   },
   both: { en: "Both", el: "Και τα δύο" },
   both_d: { en: "Use this PC by default and switch to the cloud per video for heavy models.", el: "Προεπιλογή ο υπολογιστής σου, και cloud ανά video για τα βαριά μοντέλα." },
@@ -65,11 +65,11 @@ export const W = {
   p_models: { en: "Downloading models", el: "Κατεβάζω μοντέλα" },
   inst_cloud: { en: "Connect a cloud GPU provider", el: "Σύνδεση με πάροχο cloud GPU" },
   provider: { en: "Provider", el: "Πάροχος" },
-  soon: { en: "coming soon", el: "σύντομα" },
-  vast_how: {
-    en: "1. Create a free account at vast.ai. 2. Add a few dollars of credit under Billing. 3. Open Account → API Keys, create a key and paste it here.",
-    el: "1. Φτιάξε δωρεάν λογαριασμό στο vast.ai. 2. Βάλε λίγα δολάρια credit στο Billing. 3. Άνοιξε Account → API Keys, φτιάξε ένα κλειδί και επικόλλησέ το εδώ.",
+  rp_how: {
+    en: "1. Create an account at runpod.io and add a few dollars of credit under Billing. 2. Open Settings → API Keys, create a key with Serverless read and write access and paste it here. 3. Open Serverless, click your endpoint and copy its id (the short code under its name) into the second box. The app wakes the endpoint up when you send a video and puts it back to sleep afterwards, so you pay only for the seconds a video is being made.",
+    el: "1. Φτιάξε λογαριασμό στο runpod.io και βάλε λίγα δολάρια credit στο Billing. 2. Άνοιξε Settings → API Keys, φτιάξε ένα κλειδί με πρόσβαση Serverless ανάγνωση και εγγραφή και επικόλλησέ το εδώ. 3. Άνοιξε το Serverless, πάτα το endpoint σου και αντίγραψε το id του (ο σύντομος κωδικός κάτω από το όνομα) στο δεύτερο κουτί. Το πρόγραμμα ξυπνά το endpoint όταν στέλνεις video και το βάζει για ύπνο μετά, οπότε πληρώνεις μόνο τα δευτερόλεπτα που φτιάχνεται το video.",
   },
+  endpoint_id: { en: "RunPod endpoint id", el: "RunPod endpoint id" },
   fal_how: {
     en: "1. Create an account at fal.ai. 2. Add credit under Billing. 3. Open Dashboard → Keys, create a key and paste it here. fal.ai runs the models for you, so there is no GPU to rent. Each image or clip costs a few cents.",
     el: "1. Φτιάξε λογαριασμό στο fal.ai. 2. Βάλε credit στο Billing. 3. Άνοιξε Dashboard → Keys, φτιάξε ένα κλειδί και επικόλλησέ το εδώ. Το fal.ai τρέχει τα μοντέλα για σένα, άρα δεν νοικιάζεις GPU. Κάθε εικόνα ή clip κοστίζει λίγα cents.",
@@ -92,8 +92,8 @@ export const W = {
   toobig: { en: "too big for your card", el: "πολύ μεγάλο για την κάρτα σου" },
   download_sel: { en: "Download selected", el: "Κατέβασμα επιλεγμένων" },
   m_cloud: {
-    en: "With a cloud GPU the models live on the cloud worker. You manage them later in the Models page.",
-    el: "Με cloud GPU τα μοντέλα βρίσκονται στον cloud worker. Τα διαχειρίζεσαι αργότερα από τη σελίδα Μοντέλα.",
+    en: "On RunPod the models are already on the endpoint's network volume. Nothing to install here.",
+    el: "Στο RunPod τα μοντέλα βρίσκονται ήδη στο network volume του endpoint. Δεν χρειάζεται να εγκαταστήσεις κάτι εδώ.",
   },
   have: { en: "downloaded", el: "κατεβασμένο" },
   // finish

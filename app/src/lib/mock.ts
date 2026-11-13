@@ -35,7 +35,7 @@ export function installMock(hw: unknown = gpuNvidia) {
       case "bootstrap":
         return {
           projects: [{ id: "p1", name: "Default", created_at: 0, folder: "", suffix: "", sidecar: true, dir: "C:\\Videos" }],
-          secrets: { vast_api_key: false }, settings: state.settings,
+          secrets: { runpod_api_key: false }, settings: state.settings,
           workflows: [wf("ltxv-t2v", "t2v", "ltxv-2b", 40), wf("wan22-t2v-lightning", "t2v", "wan22-t2v", 10)],
           workflow_errors: [], user_workflows_dir: "", output_dir: "C:\\Videos", anthropic_models: [], cli_models: [], claude_cli: null, models,
         };
@@ -51,8 +51,8 @@ export function installMock(hw: unknown = gpuNvidia) {
       case "local_start": await sleep(800); return;
       case "local_install_models": await fakeDownload([["models", "ltx-video-2b-v0.9.5.safetensors"]]); return;
       case "setting_set": state.settings[(args as { key: string }).key] = (args as { value: string }).value; return;
-      case "secret_set": return { vast_api_key: true };
-      case "test_vast": return { ok: true, message: "ok", endpoint: null, all_endpoints: [] };
+      case "secret_set": return { runpod_api_key: true };
+      case "runpod_status": return { state: "asleep", workers_max: 0, endpoint_id: "mock", jobs_waiting: 0, session_usd: 0, usd_per_hour_while_working: 1.22, auto_sleep_min: 5, note: "" };
       case "job_enqueue": return { id: "j1" };
       case "editor_url": return "http://127.0.0.1:5200";
       case "log_ui": return;

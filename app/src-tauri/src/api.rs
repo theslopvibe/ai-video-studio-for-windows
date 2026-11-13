@@ -1,6 +1,6 @@
 //! Local HTTP API on 127.0.0.1 so an MCP server (Claude Desktop) can drive the app.
 //! Bearer token + port are written to `<data dir>/api.json`; the MCP reads that file.
-use crate::{db, gpu_offers, job_cancel, job_enqueue, job_retry, logs_report, secrets, AppState};
+use crate::{db, job_cancel, job_enqueue, job_retry, logs_report, runpod, secrets, workflows, AppState};
 use serde_json::{json, Map, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -83,7 +83,6 @@ pub async fn serve(app: AppHandle) {
 struct Req {
     method: String,
     path: String,
-    query: String,
     auth: String,
     host_ok: bool,
     body: Vec<u8>,
@@ -126,7 +125,7 @@ async fn read_req(sock: &mut TcpStream) -> Option<Req> {
     let mut first = lines.next()?.split_whitespace();
     let method = first.next()?.to_string();
     let target = first.next()?.to_string();
-    let (path, query) = target.split_once('?').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((target, String::new()));
+    let path = target.split_once('?').map(|(a, _)| a.to_string()).unwrap_or(target);
     let mut auth = String::new();
     let mut host_ok = false;
     let mut len = 0usize;
@@ -152,7 +151,7 @@ async fn read_req(sock: &mut TcpStream) -> Option<Req> {
         body.extend_from_slice(&tmp[..n]);
     }
     body.truncate(len);
-    Some(Req { method, path, query, auth, host_ok, body })
+    Some(Req { method, path, auth, host_ok, body })
 }
 
 async fn handle(mut sock: TcpStream, app: AppHandle, token: String) {
@@ -180,14 +179,10 @@ async fn handle(mut sock: TcpStream, app: AppHandle, token: String) {
     let _ = sock.shutdown().await;
 }
 
-fn query_f64(q: &str, key: &str) -> Option<f64> {
-    q.split('&').filter_map(|p| p.split_once('=')).find(|(k, _)| *k == key).and_then(|(_, v)| v.parse().ok())
-}
-
 fn job_json(j: &db::Job) -> Value {
     json!({
         "id": j.id, "status": j.status, "message": j.message, "error": j.error, "file_path": j.file_path,
-        "prompt": j.prompt, "workflow_id": j.workflow_id, "gpu": j.gpu, "est_cost_usd": j.est_cost,
+        "prompt": j.prompt, "workflow_id": j.workflow_id, "est_cost_usd": j.est_cost,
         "created_at": j.created_at, "started_at": j.started_at, "finished_at": j.finished_at,
     })
 }
@@ -204,51 +199,22 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
             Ok(json!({
                 "app_version": env!("CARGO_PKG_VERSION"),
                 "secrets": secrets::status(),
-                "endpoint": st.db.kv_get("endpoint_name").unwrap_or_default(),
-                "default_gpu": st.db.kv_get("gpu_selection").unwrap_or_default(),
+                "runpod_endpoint_id": st.db.kv_get("runpod_endpoint_id").unwrap_or_default(),
                 "default_workflow": st.db.kv_get("last_workflow").unwrap_or_default(),
-                "default_provider": st.db.kv_get("provider").unwrap_or_else(|| "vast".into()),
+                "default_provider": default_provider(&st),
                 "local_installed": crate::local::installed(&crate::local::portable_dir(&st)),
                 "output_dir": st.output_dir().to_string_lossy(),
                 "workflows": wf.len(), "workflow_errors": errs, "active_jobs": active,
             }))
         }
-        ("GET", ["v1", "vast"]) => {
-            let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
-            let cards = st.vast.instances(&key).await?;
-            let (_, progress) = crate::card::state();
-            let meta: Value = st.db.kv_get("cards").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({}));
-            let list: Vec<Value> = cards.iter().map(|c| {
-                let ours = c.label == crate::card::LABEL;
-                let packs = meta[c.id.to_string()]["packs"].as_str().unwrap_or("");
-                let kind = if !ours { "other" } else if packs.contains("wan22") { "video" } else if packs.is_empty() { "unknown" } else { "images" };
-                let ready = ours && c.status == "running" && crate::card::is_ready(c.id);
-                let mut v = serde_json::to_value(c).unwrap_or(json!({}));
-                v["ready"] = json!(ready);
-                v["in_use"] = json!(crate::card::in_use(c.id));
-                v["kind"] = json!(kind);
-                v
-            }).collect();
-            let ready = list.iter().any(|c| c["ready"] == json!(true));
-            Ok(json!({ "ready": ready, "progress": if list.iter().all(|c| c["ready"] == json!(true)) { String::new() } else { progress }, "cards": list, "starting": crate::warm_state() == "preparing", "card_max": crate::card::card_max(&st), "image_card": st.db.kv_get("image_card").unwrap_or_else(|| "on".into()), "auto_close_min": st.db.kv_get("auto_close_min").unwrap_or_else(|| "10".into()), "note": "ready is per card: a card can take work only when its own ready is true. kind video = Wan (+FLUX), images = picture-only card." }))
+        ("GET", ["v1", "runpod", "status"]) => runpod::status(&st).await,
+        ("POST", ["v1", "runpod", "wake"]) => {
+            let (key, id) = runpod::creds(&st)?;
+            Ok(json!({ "message": runpod::wake(&key, &id).await?, "note": "generate_video also wakes RunPod by itself when it is asleep; the first video can take a minute or two longer." }))
         }
-        ("POST", ["v1", "card", "start"]) => {
-            if body["user_confirmed"] != json!(true) { return Err("Ask the user first (a card costs money while it runs), then call again with user_confirmed=true.".into()); }
-            let extra = body["new_card"] == json!(true);
-            if crate::warm_state() == "preparing" && !extra { return Ok(json!({ "message": "A card is already starting. To start one more at the same time, call again with new_card=true." })); }
-            let h = app.clone();
-            let (wfs, _) = st.load_workflows();
-            let wf = match body["workflow_id"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_workflow(&wfs, q, "i2v")?), None => None };
-            let gpu = match body["gpu"].as_str().filter(|q| !q.is_empty()) { Some(q) => Some(resolve_gpu(&st, q).await?.0), None => None };
-            let image = matches!(body["kind"].as_str(), Some("image" | "images"));
-            tauri::async_runtime::spawn(async move { let _ = crate::run_warm_with(&h, wf, gpu, image, extra).await; });
-            Ok(json!({ "message": "Starting a card. Check vast_running until that card shows ready=true (status running alone is NOT enough: the models are still downloading, about 10-25 minutes for video, less for a picture-only card; progress shows what it is doing), then send the jobs. Jobs run in parallel on separate ready cards, up to card_max. The app closes idle cards by itself and checks every card each minute." }))
-        }
-        ("POST", ["v1", "vast", "stop"]) => {
-            if body["user_confirmed"] != json!(true) { return Err("Ask the user first, then call again with user_confirmed=true.".into()); }
-            // closing everything must be explicit: {"all": true}; otherwise a valid positive id is required
-            let id = if body["all"] == json!(true) { 0 } else { body["id"].as_i64().filter(|n| *n > 0).ok_or("Give a valid card id, or all=true to close all of this app's cards.")? };
-            Ok(json!({ "message": crate::stop_vast(&st, id).await? }))
+        ("POST", ["v1", "runpod", "sleep"]) => {
+            let (key, id) = runpod::creds(&st)?;
+            Ok(json!({ "message": runpod::sleep(&key, &id).await? }))
         }
         ("GET", ["v1", "workflows"]) => {
             let (wf, _) = st.load_workflows();
@@ -271,7 +237,6 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
                 .collect();
             Ok(json!(list))
         }
-        ("GET", ["v1", "gpus"]) => serde_json::to_value(gpu_offers(app.state(), query_f64(&req.query, "min_vram").unwrap_or(0.0)).await?).map_err(|x| x.to_string()),
         ("GET", ["v1", "projects"]) => serde_json::to_value(st.projects()?).map_err(|x| x.to_string()),
         ("GET", ["v1", "jobs"]) => {
             let mut jobs = st.db.jobs(None).map_err(|x| x.to_string())?;
@@ -300,16 +265,13 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
         return Err("The prompt is missing".into());
     }
     let mut params: Map<String, Value> = b["params"].as_object().cloned().unwrap_or_default();
-    if let Some(p) = b["provider"].as_str().filter(|p| matches!(*p, "local" | "vast")) {
-        params.insert("provider".into(), json!(p));
-    }
-    let mut gpu_note = Value::Null;
-    if let Some(g) = b["gpu"].as_str().filter(|g| !g.is_empty()) {
-        let (name, dph, vram) = resolve_gpu(st, g).await?;
-        params.insert("gpu".into(), json!(name));
-        params.insert("gpu_dph".into(), json!(dph));
-        gpu_note = json!(format!("{name} ({vram} GB, ~{dph:.2} USD/hour)"));
-    }
+    let provider = match b["provider"].as_str().filter(|p| matches!(*p, "local" | "runpod")) {
+        Some(p) => {
+            params.insert("provider".into(), json!(p));
+            p.to_string()
+        }
+        None => default_provider(st),
+    };
     if let Some(s) = b["scene"].as_u64() {
         params.insert("scene".into(), json!(s));
     }
@@ -342,17 +304,21 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
     let wanted_kind = if matches!(b["kind"].as_str(), Some("tts" | "vc" | "i2i" | "v2v" | "lipsync" | "subs" | "i2m")) { b["kind"].as_str().unwrap() }
         else if b["kind"] == "audio" { "t2a" } else if b["kind"] == "image" { "t2i" } else if has_end { "flf2v" } else if has_start { "i2v" } else { "t2v" };
     let wf_id = match b["workflow_id"].as_str().filter(|w| !w.is_empty()) {
-        Some(q) => resolve_workflow(&wfs, q, wanted_kind)?,
+        Some(q) => resolve_workflow(&wfs, q, wanted_kind, &provider)?,
         None => {
-            let pick = |kind: &str| wfs.iter().filter(|w| w.meta.kind == kind).min_by_key(|w| w.meta.priority).map(|w| w.meta.id.clone());
+            // modes that run where the provider says (RunPod modes and their open-source twins, or open-source modes on this PC) come first
+            let fits = |w: &workflows::Workflow| if provider == "runpod" { w.meta.provider == "runpod" || workflows::effective_id(&wfs, &w.meta.id, "runpod") != w.meta.id } else { w.meta.provider.is_empty() };
+            let pick = |kind: &str| wfs.iter().filter(|w| w.meta.kind == kind).min_by_key(|w| (!fits(w), w.meta.priority)).map(|w| w.meta.id.clone());
             // the model family chosen last (in the app or by Claude) wins when it has a mode of the wanted kind
             let family = st.db.kv_get("default_model").unwrap_or_default();
-            (if family.is_empty() { None } else { resolve_workflow(&wfs, &family, wanted_kind).ok() })
+            (if family.is_empty() { None } else { resolve_workflow(&wfs, &family, wanted_kind, &provider).ok() })
                 .or_else(|| pick(wanted_kind))
                 .or_else(|| if has_end { pick("i2v") } else { None })
                 .ok_or_else(|| format!("There is no workflow of type {wanted_kind}"))?
         }
     };
+    // on RunPod an open-source mode runs as its RunPod twin (the models live on the endpoint's volume)
+    let wf_id = workflows::effective_id(&wfs, &wf_id, &provider);
     if (has_start || has_end) && !wfs.iter().any(|w| w.meta.id == wf_id && w.meta.inputs.iter().any(|i| i.key == "image")) {
         return Err(format!("The workflow \"{wf_id}\" does not take an image."));
     }
@@ -362,19 +328,20 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
         Some(p) => p.id,
         None => st.db.create_project(name, "").map_err(|x| x.to_string())?.id,
     };
+    let meta = wfs.iter().find(|w| w.meta.id == wf_id).map(|w| w.meta.clone());
     let job = job_enqueue(app.state(), app.clone(), project_id, wf_id, prompt, params)?;
     let mut out = job_json(&job);
-    out["gpu_chosen"] = gpu_note;
+    out["runs_on"] = json!(match &meta { Some(m) if !m.provider.is_empty() => m.provider.clone(), _ => "local".into() });
+    out["est_usd"] = json!(meta.as_ref().map(|m| m.est_usd).unwrap_or(0.0));
+    if meta.as_ref().is_some_and(|m| m.provider == "runpod") {
+        out["note"] = json!("RunPod wakes up by itself for this job (the first video can take a minute or two longer) and goes back to sleep after the queue has been empty for a few minutes. est_usd is the typical price of one result.");
+    }
     Ok(out)
 }
 
-fn norm(s: &str) -> String {
-    let l = s.to_lowercase().replace("geforce", "").replace("nvidia", "").replace("rtx", "");
-    l.chars().filter(|c| c.is_alphanumeric()).collect()
-}
-
-/// "ltx", "wan", "ltxv-i2v" -> a workflow id, preferring the wanted kind (t2v | i2v | flf2v).
-fn resolve_workflow(wfs: &[crate::workflows::Workflow], q: &str, kind: &str) -> Result<String, String> {
+/// "ltx", "wan", "ltxv-i2v" -> a workflow id, preferring the wanted kind (t2v | i2v | flf2v) and, among equals,
+/// the modes of the wanted provider ("runpod" or "local").
+fn resolve_workflow(wfs: &[crate::workflows::Workflow], q: &str, kind: &str, provider: &str) -> Result<String, String> {
     let ql = q.trim().to_lowercase();
     if let Some(w) = wfs.iter().find(|w| w.meta.id == ql) {
         return Ok(w.meta.id.clone());
@@ -394,94 +361,34 @@ fn resolve_workflow(wfs: &[crate::workflows::Workflow], q: &str, kind: &str) -> 
             (!key.is_empty() && id.contains(&key)) || w.meta.name_en.to_lowercase().contains(&ql)
         })
         .collect();
-    hits.sort_by_key(|w| (w.meta.kind != kind, w.meta.priority));
+    hits.sort_by_key(|w| (w.meta.kind != kind, (w.meta.provider == "runpod") != (provider == "runpod"), w.meta.priority));
     hits.first().map(|w| w.meta.id.clone()).ok_or_else(|| {
         format!("Unknown model \"{q}\". Available: {}", wfs.iter().map(|w| w.meta.id.as_str()).collect::<Vec<_>>().join(", "))
     })
 }
 
-/// Splits "RTX 4090 24GB" into the card text ("rtx 4090") and the VRAM figure (24.0).
-fn split_vram(q: &str) -> (String, Option<f64>) {
-    let l = q.to_lowercase();
-    let b = l.as_bytes();
-    if let Some(i) = l.find("gb") {
-        let mut j = i;
-        while j > 0 && b[j - 1] == b' ' {
-            j -= 1;
-        }
-        let end = j;
-        while j > 0 && (b[j - 1].is_ascii_digit() || b[j - 1] == b'.') {
-            j -= 1;
-        }
-        if let Ok(v) = l[j..end].parse::<f64>() {
-            return (format!("{}{}", &l[..j], &l[i + 2..]), Some(v));
-        }
-    }
-    (l, None)
-}
-
-/// Free text like "4090" or "RTX 4090 24GB" -> exact Vast GPU name, USD/h and VRAM. Never silently substitutes another card.
-async fn resolve_gpu(st: &AppState, q: &str) -> Result<(String, f64, f64), String> {
-    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing in the app (Settings).")?;
-    let offers = st.vast.gpu_offers(&key, 0.0).await?;
-    let (text, want_vram) = split_vram(q);
-    let core = norm(&text);
-    let list = |o: &[&crate::vast::GpuOffer]| o.iter().map(|g| format!("{} ({} GB, {:.2} USD/hour)", g.name, g.vram_gb, g.min_price)).collect::<Vec<_>>().join("; ");
-    let mut hits: Vec<&crate::vast::GpuOffer> = offers.iter().filter(|g| !core.is_empty() && norm(&g.name).contains(&core)).collect();
-    if hits.is_empty() {
-        let digits: String = core.chars().filter(|c| c.is_ascii_digit()).collect();
-        let near: Vec<&crate::vast::GpuOffer> = offers.iter().filter(|g| !digits.is_empty() && norm(&g.name).contains(&digits)).collect();
-        let all: Vec<&crate::vast::GpuOffer> = offers.iter().collect();
-        return Err(format!(
-            "The card \"{q}\" is not offered on Vast. {} Ask the user which one they want.",
-            if near.is_empty() { format!("Available: {}", list(&all)) } else { format!("Close matches: {}", list(&near)) }
-        ));
-    }
-    if let Some(v) = want_vram {
-        let same: Vec<&crate::vast::GpuOffer> = hits.iter().copied().filter(|g| (g.vram_gb - v).abs() <= 1.5).collect();
-        if same.is_empty() {
-            return Err(format!("The card \"{q}\" exists with different VRAM: {}. Ask the user.", list(&hits)));
-        }
-        hits = same;
-    }
-    hits.sort_by_key(|g| norm(&g.name).len());
-    let g = hits[0];
-    Ok((g.name.clone(), g.median_price, g.vram_gb))
+/// "runpod" (the default) or "local".
+fn default_provider(st: &AppState) -> String {
+    if st.db.kv_get("provider").as_deref() == Some("local") { "local".into() } else { "runpod".into() }
 }
 
 async fn set_defaults(st: &AppState, b: &Value) -> Result<Value, String> {
     let mut report = Map::new();
-    if let Some(q) = b["gpu"].as_str() {
-        if q.trim().is_empty() || q.eq_ignore_ascii_case("auto") {
-            crate::apply_gpu_filter(st, &[], 0.0, 0.0, true).await?;
-            report.insert("gpu".into(), json!("automatic choice"));
-        } else {
-            let (name, dph, vram) = resolve_gpu(st, q).await?;
-            let msg = crate::apply_gpu_filter(st, &[name.clone()], vram, dph, true).await?;
-            report.insert("gpu".into(), json!(format!("{name} ({vram} GB, ~{dph:.2} USD/hour)")));
-            report.insert("note".into(), json!(msg.chars().take(160).collect::<String>()));
-        }
+    if let Some(p) = b["provider"].as_str().filter(|p| matches!(*p, "local" | "runpod")) {
+        st.db.kv_set("provider", p).map_err(|x| x.to_string())?;
+        report.insert("provider".into(), json!(p));
     }
     if let Some(q) = b["model"].as_str().filter(|m| !m.trim().is_empty()) {
         let (wfs, _) = st.load_workflows();
-        let id = resolve_workflow(&wfs, q, "t2v")?;
-        let family: String = id.split('-').next().unwrap_or(&id).to_string();
+        let id = resolve_workflow(&wfs, q, "t2v", &default_provider(st))?;
+        let family: String = id.trim_start_matches("runpod-").split('-').next().unwrap_or(&id).to_string();
         st.db.kv_set("default_model", &family).map_err(|x| x.to_string())?;
         st.db.kv_set("last_workflow", &id).map_err(|x| x.to_string())?;
         report.insert("model".into(), json!(family));
     }
-    if let Some(n) = b["card_max"].as_i64() {
-        let n = n.clamp(1, 4);
-        st.db.kv_set("card_max", &n.to_string()).map_err(|x| x.to_string())?;
-        report.insert("card_max".into(), json!(n));
-    }
-    if let Some(v) = b["image_card"].as_bool() {
-        st.db.kv_set("image_card", if v { "on" } else { "off" }).map_err(|x| x.to_string())?;
-        report.insert("image_card".into(), json!(v));
-    }
-    if let Some(n) = b["auto_close_min"].as_i64().filter(|n| matches!(*n, 0 | 5 | 10 | 30)) {
-        st.db.kv_set("auto_close_min", &n.to_string()).map_err(|x| x.to_string())?;
-        report.insert("auto_close_min".into(), json!(n));
+    if let Some(n) = b["auto_sleep_min"].as_i64().filter(|n| (0..=240).contains(n)) {
+        st.db.kv_set("runpod_sleep_min", &n.to_string()).map_err(|x| x.to_string())?;
+        report.insert("auto_sleep_min".into(), json!(n));
     }
     Ok(Value::Object(report))
 }
@@ -489,18 +396,18 @@ async fn set_defaults(st: &AppState, b: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workflows::{Meta, Workflow};
 
-    #[test]
-    fn vram_is_split_from_card_text() {
-        assert_eq!(split_vram("RTX 4090 24GB"), ("rtx 4090 ".to_string(), Some(24.0)));
-        assert_eq!(split_vram("4090TI 16 gb").1, Some(16.0));
-        assert_eq!(split_vram("3090"), ("3090".to_string(), None));
+    fn mk(id: &str, kind: &str, provider: &str, priority: u32) -> Workflow {
+        Workflow { meta: Meta { id: id.into(), kind: kind.into(), provider: provider.into(), priority, ..Default::default() }, workflow: Value::Null, source: "bundled".into(), file: String::new() }
     }
 
     #[test]
-    fn card_names_are_normalised() {
-        assert_eq!(norm("NVIDIA GeForce RTX 4090"), "4090");
-        assert!(norm("RTX 3080 Ti").contains(&norm("3080ti")));
-        assert!(!norm("RTX 4090").contains(&norm("4090ti")));
+    fn names_resolve_to_the_providers_modes() {
+        let wfs = vec![mk("wan22-t2v-lightning", "t2v", "", 10), mk("runpod-wan22-t2v-lightning", "t2v", "runpod", 160), mk("ltxv-t2v", "t2v", "", 5)];
+        assert_eq!(resolve_workflow(&wfs, "wan", "t2v", "runpod").unwrap(), "runpod-wan22-t2v-lightning");
+        assert_eq!(resolve_workflow(&wfs, "wan", "t2v", "local").unwrap(), "wan22-t2v-lightning");
+        assert_eq!(resolve_workflow(&wfs, "wan22-t2v-lightning", "t2v", "runpod").unwrap(), "wan22-t2v-lightning");
+        assert!(resolve_workflow(&wfs, "nonsense", "t2v", "runpod").is_err());
     }
 }

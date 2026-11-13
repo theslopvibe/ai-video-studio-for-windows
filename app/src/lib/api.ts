@@ -38,15 +38,13 @@ export type Bootstrap = {
   workflows: Workflow[]; workflow_errors: string[]; user_workflows_dir: string; output_dir: string;
   anthropic_models: string[]; cli_models: string[]; claude_cli: string | null; models: ModelPack[];
 };
-export type EndpointInfo = {
-  id: number; name: string; state: string; cold_workers: number; min_load: number;
-  max_workers: number; scales_to_zero: boolean;
+export type RunpodState = "asleep" | "awake" | "working";
+export type RunpodStatus = {
+  state: RunpodState; workers_max: number; endpoint_id: string; jobs_waiting: number; session_usd: number;
+  usd_per_hour_while_working: number; auto_sleep_min: number; note: string;
 };
-export type VastTest = { ok: boolean; message: string; endpoint: EndpointInfo | null; all_endpoints: string[] };
-export type GpuOffer = { name: string; vram_gb: number; min_price: number; median_price: number; offers: number };
 
 export type Enhanced = { text: string; tokens: number | null; provider: string };
-export type InstallResult = { script: string; download_gb: number; applied: boolean; message: string };
 
 export type Hardware = {
   os: string; gpus: { name: string; vram_mb: number; driver: string }[]; ram_gb: number;
@@ -102,22 +100,15 @@ export const api = {
   retry: (id: string) => invoke<void>("job_retry", { id }),
   deleteJob: (id: string, deleteFile: boolean) => invoke<void>("job_delete", { id, deleteFile }),
   enhance: (idea: string, hint: string) => invoke<Enhanced>("enhance_prompt", { idea, hint }),
-  testVast: () => invoke<VastTest>("test_vast"),
   testLlm: () => invoke<string>("test_llm"),
-  scaleToZero: () => invoke<string>("apply_scale_to_zero"),
-  gpuOffers: (minVram: number) => invoke<GpuOffer[]>("gpu_offers", { minVram }),
-  applyGpus: (gpus: string[], minVram: number, dph: number) => invoke<string>("apply_gpus", { gpus, minVram, dph }),
-  vastInstances: () => invoke<{ id: number; gpu: string; status: string; usd_per_hour: number; minutes: number; cost_so_far: number }[]>("vast_instances"),
-  vastDestroy: (id: number) => invoke<string>("vast_destroy", { id }),
-  warmUp: (image = false, extra = false) => invoke<void>("warm_up", { image, extra }),
-  warmCancel: () => invoke<void>("warm_cancel"),
-  installOnWorkers: (ids: string[], apply: boolean) => invoke<InstallResult>("install_on_workers", { ids, apply }),
+  runpodStatus: () => invoke<RunpodStatus>("runpod_status"),
+  runpodWake: () => invoke<string>("runpod_wake"),
+  runpodSleep: () => invoke<string>("runpod_sleep"),
   hfLookup: (query: string, videoOnly: boolean) => invoke<HfResult>("hf_lookup", { query, videoOnly }),
   customModelAdd: (repo: string, name: string, kind: string, vramGb: number, license: string, files: [string, string, number][], insight: Insight | null) =>
     invoke<ModelPack[]>("custom_model_add", { repo, name, kind, vramGb, license, files, insight }),
   customModelRemove: (id: string) => invoke<ModelPack[]>("custom_model_remove", { id }),
   workflowImport: (path: string) => invoke<[Workflow[], string[]]>("workflow_import", { path }),
-  setupEndpoint: (gpus: string[]) => invoke<string>("setup_endpoint", { gpus }),
   logsTail: (lines: number) => invoke<string>("logs_tail", { lines }),
   logUi: (level: string, msg: string) => invoke<void>("log_ui", { level, msg }),
   logsReport: () => invoke<string>("logs_report"),

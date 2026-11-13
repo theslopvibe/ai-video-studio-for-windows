@@ -7,6 +7,7 @@
   import type { Theme } from "./store.svelte";
   import { ct } from "./chatStrings";
   import ModelSelect from "./ModelSelect.svelte";
+  import RunpodPanel from "./RunpodPanel.svelte";
   import { check as checkUpdate } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -46,11 +47,11 @@
     }
   }
 
-  let vast = $state("");
+  let rpKey = $state("");
+  let rpRes = $state<{ ok: boolean; text: string } | null>(null);
   let anth = $state("");
   let geminiKey = $state("");
   let openaiKey = $state("");
-  let endpoint = $state(S.settings.endpoint_name ?? "comfyui-json");
   let busy = $state<string>("");
   let res = $state<Record<string, { ok: boolean; text: string }>>({});
 
@@ -64,30 +65,20 @@
     try { res.llm = { ok: true, text: await api.testLlm() }; } catch (e) { res.llm = { ok: false, text: String(e) }; }
     busy = "";
   }
-  async function setupVast() {
-    const ok = await askDialog(S.t("setup_confirm"), { title: S.t("setup_btn"), kind: "warning" });
-    if (!ok) return;
-    busy = "vast";
-    try {
-      const gpus = (S.settings.gpu_selection ?? "").split(",").filter(Boolean);
-      const m = await api.setupEndpoint(gpus);
-      res.vast = { ok: true, text: m };
-    } catch (e) { res.vast = { ok: false, text: String(e) }; }
+  // RunPod: "Save and test" saves the key, then asks RunPod's /health for the endpoint (key + endpoint id are checked together)
+  async function testRunpod() {
+    busy = "rp"; rpRes = null;
+    try { rpRes = { ok: true, text: await api.hostedTest("runpod") }; } catch (e) { rpRes = { ok: false, text: String(e) }; }
     busy = "";
-    await test("vast");
+    S.refreshRunpod();
   }
-  async function test(which: "vast") {
-    busy = which;
-    try {
-      await S.set("endpoint_name", endpoint.trim() || "comfyui-json");
-      const r = await api.testVast();
-      res.vast = { ok: r.ok && !!r.endpoint?.scales_to_zero, text: r.message };
-    } catch (e) { res[which] = { ok: false, text: String(e) }; }
-    busy = "";
+  async function saveRunpodKey() {
+    await saveKey("runpod_api_key", rpKey); rpKey = "";
+    if (S.secrets.runpod_api_key) await testRunpod();
   }
-  async function zero() {
-    try { res.vast = { ok: true, text: await api.scaleToZero() }; await test("vast"); }
-    catch (e) { res.vast = { ok: false, text: String(e) }; }
+  async function saveEndpointId(v: string) {
+    await S.set("runpod_endpoint_id", v.trim());
+    S.refreshRunpod();
   }
   async function chooseDir() {
     const d = await pickDialog({ directory: true });
@@ -121,12 +112,40 @@
   <div class="card">
     <h2>{S.t("default_provider")}</h2>
     <div class="row">
-      <select value={S.settings.provider ?? "vast"} onchange={(e) => S.set("provider", e.currentTarget.value)} style="width:auto">
+      <select value={S.provider} onchange={(e) => S.set("provider", e.currentTarget.value)} style="width:auto">
+        <option value="runpod">{S.t("run_cloud")}</option>
         <option value="local">{S.t("run_pc")}</option>
-        <option value="vast">{S.t("run_cloud")}</option>
       </select>
       <button onclick={() => (S.wizard = true)}>{S.t("rerun_wizard")}</button>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>{ct(S.lang, "rp_title")}</h2>
+    <p class="small dim">{ct(S.lang, "rp_intro")}</p>
+    <div class="field">
+      <label for="rpk">{ct(S.lang, "rp_key_label")} <span class="pill {S.secrets.runpod_api_key ? 'ok' : 'warn'}">{S.secrets.runpod_api_key ? S.t("set") : S.t("not_set")}</span></label>
+      <div class="row">
+        <input id="rpk" type="password" bind:value={rpKey} placeholder={S.secrets.runpod_api_key ? "••••••••••••" : ""} autocomplete="off" />
+        <button onclick={saveRunpodKey} disabled={!rpKey || busy === "rp"}>{ct(S.lang, "save_test")}</button>
+      </div>
+      <div class="small dim">{ct(S.lang, "rp_key_help")}</div>
+    </div>
+    <div class="field">
+      <label for="rpe">{ct(S.lang, "rp_endpoint")}</label>
+      <div class="row">
+        <input id="rpe" value={S.settings.runpod_endpoint_id ?? ""} onchange={(e) => saveEndpointId(e.currentTarget.value)} autocomplete="off" />
+        <button onclick={testRunpod} disabled={busy === "rp" || !S.runpodReady}>{busy === "rp" ? S.t("testing") : ct(S.lang, "rp_test")}</button>
+      </div>
+      <div class="small dim">{ct(S.lang, "rp_endpoint_help")}</div>
+    </div>
+    <div class="field">
+      <label for="rpd">{ct(S.lang, "rp_rate")}</label>
+      <input id="rpd" type="number" min="0" step="0.01" placeholder="1.22" value={S.settings.runpod_gpu_dph ?? ""} onchange={(e) => S.set("runpod_gpu_dph", e.currentTarget.value.trim())} style="width:120px" />
+      <div class="small dim">{ct(S.lang, "rp_rate_help")}</div>
+    </div>
+    {#if rpRes}<div class="msg {rpRes.ok ? 'ok' : 'err'}">{rpRes.text}</div>{/if}
+    <RunpodPanel />
   </div>
 
   <div class="card">
@@ -158,32 +177,6 @@
         {#if provRes[k.name]}<div class="msg {provRes[k.name].ok ? 'ok' : 'err'}">{provRes[k.name].text}</div>{/if}
       </div>
     {/each}
-  </div>
-
-  <div class="card">
-    <h2>{S.t("keys_title")}</h2>
-    <p class="small dim">{S.t("keys_note")}</p>
-
-    <div class="field">
-      <label for="vk">{S.t("vast_key")} <span class="pill {S.secrets.vast_api_key ? 'ok' : 'warn'}">{S.secrets.vast_api_key ? S.t("set") : S.t("not_set")}</span></label>
-      <div class="row">
-        <input id="vk" type="password" bind:value={vast} placeholder={S.secrets.vast_api_key ? "••••••••••••" : ""} autocomplete="off" />
-        <button onclick={async () => { await saveKey("vast_api_key", vast); vast = ""; }} disabled={!vast}>{S.t("save")}</button>
-      </div>
-      <div class="small dim">{S.t("vast_key_help")}</div>
-    </div>
-    <div class="field">
-      <label for="ep">{S.t("endpoint_name")}</label>
-      <div class="row">
-        <input id="ep" bind:value={endpoint} onchange={() => S.set("endpoint_name", endpoint.trim())} />
-        <button onclick={() => test("vast")} disabled={busy === "vast"}>{busy === "vast" ? S.t("testing") : S.t("test")}</button>
-        <button onclick={zero}>{S.t("scale_zero")}</button>
-      </div>
-      {#if res.vast}<div class="msg {res.vast.ok ? 'ok' : 'warn'}">{res.vast.text}</div>{/if}
-      {#if S.secrets.vast_api_key && res.vast && !res.vast.ok && res.vast.text.includes("endpoint")}<button onclick={setupVast} disabled={busy === "vast"}>{S.t("setup_btn")}</button>{/if}
-    </div>
-    <div class="msg">{S.t("r2_note")}</div>
-
   </div>
 
   <div class="card">
@@ -251,15 +244,6 @@
   </div>
 
   <div class="card">
-    <h2>{S.t("delivery_title")}</h2>
-    <div class="field">
-      <label class="row"><input type="radio" name="del" checked={S.settings.delivery !== "cloud"} onchange={() => S.set("delivery", "local")} /> {S.t("delivery_local")}</label>
-      <label class="row"><input type="radio" name="del" checked={S.settings.delivery === "cloud"} onchange={() => S.set("delivery", "cloud")} /> {S.t("delivery_cloud")}</label>
-    </div>
-    <p class="small dim">{S.t("delivery_note")}</p>
-  </div>
-
-  <div class="card">
     <h2>{S.t("out_dir")}</h2>
     <div class="row">
       <input value={S.boot?.output_dir} readonly />
@@ -277,11 +261,11 @@
   <div class="card">
     <h2>{S.lang === "el" ? "Σύνδεση με Claude (Claude Desktop ή Claude Code)" : "Connect to Claude (Claude Desktop or Claude Code)"}</h2>
     <p class="small dim">{S.lang === "el"
-      ? "Τι κάνει: μπορείς να γράφεις στο Claude με απλά λόγια, π.χ. «φτιάξε ένα βίντεο 5 δευτερολέπτων με Wan 2.2 από αυτή τη φωτογραφία, στη 4090», και το Claude χρησιμοποιεί αυτό το πρόγραμμα για να το φτιάξει. Μπορεί επίσης να επιλέγει μοντέλο και κάρτα, να λέει πόσο θα κοστίσει, και να σε ενημερώνει όταν η κάρτα είναι έτοιμη."
-      : "What it does: you can talk to Claude in plain words, e.g. “make a 5-second video with Wan 2.2 from this photo on a 4090”, and Claude uses this program to make it. It can also pick the model and the card, tell you the price, and let you know when the card is ready."}</p>
+      ? "Τι κάνει: μπορείς να γράφεις στο Claude με απλά λόγια, π.χ. «φτιάξε ένα βίντεο 5 δευτερολέπτων με Wan 2.2 από αυτή τη φωτογραφία», και το Claude χρησιμοποιεί αυτό το πρόγραμμα για να το φτιάξει. Μπορεί επίσης να επιλέγει μοντέλο, να λέει πόσο θα κοστίσει, και να ξυπνά ή να βάζει για ύπνο το RunPod."
+      : "What it does: you can talk to Claude in plain words, e.g. “make a 5-second video with Wan 2.2 from this photo”, and Claude uses this program to make it. It can also pick the model, tell you the price, and wake up or put RunPod to sleep."}</p>
     <p class="small dim">{S.lang === "el"
-      ? "Πώς δουλεύει: Claude → σύνδεση (extension ή εντολή) → αυτό το πρόγραμμα, μόνο μέσα στον υπολογιστή σου και με μυστικό κωδικό → το πρόγραμμα ενοικιάζει μια κάρτα στο Vast.ai (ή τρέχει στο PC σου) και σώζει το βίντεο στον φάκελό σου. Το Claude ρωτά πριν ξοδέψει χρήματα. Την πρώτη φορά η κάρτα θέλει 15–25 λεπτά να στηθεί (κατεβαίνουν τα μοντέλα), μετά κάθε βίντεο βγαίνει σε 1–3 λεπτά. Η κάρτα κλείνει μόνη της μετά από ~10 λεπτά αδράνειας. Το πρόγραμμα πρέπει να είναι ανοιχτό (μπορεί και ελαχιστοποιημένο)."
-      : "How it works: Claude → connection (extension or command) → this program, only inside your computer and behind a secret token → the program rents a card on Vast.ai (or runs on your PC) and saves the video in your folder. Claude asks before spending money. The first time, a card takes 15–25 minutes to set up (the models download); after that each video takes 1–3 minutes. The card closes by itself after ~10 idle minutes. The program must be open (minimised is fine)."}</p>
+      ? "Πώς δουλεύει: Claude → σύνδεση (extension ή εντολή) → αυτό το πρόγραμμα, μόνο μέσα στον υπολογιστή σου και με μυστικό κωδικό → το πρόγραμμα στέλνει τη δουλειά στο RunPod endpoint σου (ή τρέχει στο PC σου) και σώζει το βίντεο στον φάκελό σου. Το Claude ρωτά πριν ξοδέψει χρήματα. Το RunPod ξυπνά μόνο του για κάθε δουλειά (το πρώτο βίντεο αργεί 1–3 λεπτά παραπάνω) και κοιμάται όταν η ουρά μείνει άδεια για λίγα λεπτά. Το πρόγραμμα πρέπει να είναι ανοιχτό (μπορεί και ελαχιστοποιημένο)."
+      : "How it works: Claude → connection (extension or command) → this program, only inside your computer and behind a secret token → the program sends the job to your RunPod endpoint (or runs on your PC) and saves the video in your folder. Claude asks before spending money. RunPod wakes up by itself for each job (the first video takes 1–3 minutes longer) and goes back to sleep after the queue has been empty for a few minutes. The program must be open (minimised is fine)."}</p>
     <p><b>{S.lang === "el" ? "Βήμα 1" : "Step 1"}</b> — <label class="row" style="display:inline-flex"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
       {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με το Claude (ακούει μόνο σε αυτό το PC)" : "Allow the Claude connection (listens on this PC only)"}</label></p>
     <p><b>{S.lang === "el" ? "Βήμα 2α — Claude Desktop" : "Step 2a — Claude Desktop"}</b></p>
@@ -301,13 +285,13 @@
       <button disabled={!conn} onclick={() => conn && copyText(conn.claude_code_cmd)}>{S.lang === "el" ? "Αντιγραφή" : "Copy"}</button>
     </div>
     <p class="small dim"><b>{S.lang === "el" ? "Βήμα 3" : "Step 3"}</b> — {S.lang === "el"
-      ? "Ρώτα το Claude, π.χ. «τι μοντέλα και κάρτες έχεις;» ή «φτιάξε βίντεο με Wan 2.2 από αυτή την εικόνα στη 4090». Για να κλείσεις την κάρτα πες «τελείωσα, κλείσε την κάρτα»."
-      : "Ask Claude, e.g. “what models and cards do you have?” or “make a video with Wan 2.2 from this image on a 4090”. To stop billing say “I’m done, close the card”."}</p>
+      ? "Ρώτα το Claude, π.χ. «τι μοντέλα έχεις;» ή «φτιάξε βίντεο με Wan 2.2 από αυτή την εικόνα». Για να είσαι σίγουρος ότι δεν χρεώνεσαι πες «τελείωσα, βάλε το RunPod για ύπνο»."
+      : "Ask Claude, e.g. “what models do you have?” or “make a video with Wan 2.2 from this image”. To be sure nothing is billed say “I’m done, put RunPod to sleep”."}</p>
   </div>
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.8.1" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.0" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

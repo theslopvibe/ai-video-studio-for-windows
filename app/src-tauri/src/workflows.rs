@@ -267,6 +267,18 @@ pub fn load_all(bundled: &Path, user: &Path) -> (Vec<Workflow>, Vec<String>) {
     (out, errs)
 }
 
+/// The RunPod twin of an open-source mode (`wan22-t2v-lightning` -> `runpod-wan22-t2v-lightning`), when `provider` is
+/// "runpod" and such a mode exists. Otherwise the id is returned unchanged (hosted modes, tools that only run on this PC).
+pub fn effective_id(wfs: &[Workflow], id: &str, provider: &str) -> String {
+    if provider == "runpod" && wfs.iter().any(|w| w.meta.id == id && w.meta.provider.is_empty()) {
+        let twin = format!("runpod-{id}");
+        if wfs.iter().any(|w| w.meta.id == twin && w.meta.provider == "runpod") {
+            return twin;
+        }
+    }
+    id.to_string()
+}
+
 /// The job's parameters as typed values (defaults filled in, random seed resolved) for hosted request templates.
 pub fn hosted_params(wf: &Workflow, params: &Map<String, Value>) -> Map<String, Value> {
     let mut out = Map::new();
@@ -390,6 +402,17 @@ fn walk(v: &mut Value, values: &[(String, Value)]) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn open_modes_map_to_their_runpod_twin() {
+        let mk = |id: &str, provider: &str| Workflow { meta: Meta { id: id.into(), provider: provider.into(), ..Default::default() }, workflow: Value::Null, source: "bundled".into(), file: String::new() };
+        let wfs = vec![mk("wan22-t2v-lightning", ""), mk("runpod-wan22-t2v-lightning", "runpod"), mk("kokoro-tts", ""), mk("fal-flux-schnell", "fal")];
+        assert_eq!(effective_id(&wfs, "wan22-t2v-lightning", "runpod"), "runpod-wan22-t2v-lightning");
+        assert_eq!(effective_id(&wfs, "wan22-t2v-lightning", "local"), "wan22-t2v-lightning");
+        assert_eq!(effective_id(&wfs, "kokoro-tts", "runpod"), "kokoro-tts");
+        assert_eq!(effective_id(&wfs, "fal-flux-schnell", "runpod"), "fal-flux-schnell");
+        assert_eq!(effective_id(&wfs, "unknown", "runpod"), "unknown");
+    }
+
     use super::*;
 
     fn wf(path: &str) -> Workflow {
