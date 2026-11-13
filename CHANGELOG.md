@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.2
+
+- **One button connects Claude Desktop and ZCode (GLM).** Settings > Claude connection > "Connect Claude and ZCode" adds the app to both (your other settings are kept, a backup is made). Close and reopen them once. GLM then works like Claude: it can wake RunPod, start videos and pictures and chain tools. Manual options and `Connect-ZCode.bat` stay as a fallback.
+- **RunPod spend limit.** After $5 spent in one app session (change it in Settings > RunPod spend limit, 0 = no limit) no more RunPod jobs start. It can only be changed inside the app, never from Claude or ZCode.
+- Your RunPod key stays inside the app (Windows Credential Manager). It is never sent to Claude, ZCode or the MCP connection, never shown in settings, and is removed from logs and reports.
+
+## 0.9.1
+
+- **GLM works like Claude through ZCode.** New Settings step "2c - ZCode (GLM)" and `Connect-ZCode.bat`: one double-click adds the app to ZCode (`~/.zcode/cli/config.json`), so GLM can wake RunPod, start videos and pictures, and chain tools with the same confirmation and price rules as Claude. Your other ZCode settings are kept (a backup is made).
+
 ## 0.9.0
 
 - **Cloud GPU is now RunPod Serverless instead of Vast.ai.** No more renting and waiting for a card: you pay only for the seconds a video or picture takes (about $0.02 for a FLUX picture, $0.06 for a 5 s Wan video, measured on an A40). The models live on a RunPod network volume, so nothing is downloaded per video. Enter your RunPod key and endpoint id in Settings; the old Vast cards, GPU page and card settings are gone.

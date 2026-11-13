@@ -12,6 +12,12 @@
   import { relaunch } from "@tauri-apps/plugin-process";
 
   let conn = $state<{ extension: string; installer_bat: string; exe: string; claude_code_cmd: string; folder: string } | null>(null);
+  let ccRes = $state<string[]>([]);
+  async function connectClients() {
+    busy = "cc";
+    try { ccRes = await api.connectClients(); } catch (e) { ccRes = [String(e)]; }
+    busy = "";
+  }
   api.connectInfo().then((c) => (conn = c)).catch(() => {});
   async function copyText(t: string) { await navigator.clipboard.writeText(t).catch(() => {}); S.notify(S.t("copied")); }
 
@@ -144,6 +150,11 @@
       <input id="rpd" type="number" min="0" step="0.01" placeholder="1.22" value={S.settings.runpod_gpu_dph ?? ""} onchange={(e) => S.set("runpod_gpu_dph", e.currentTarget.value.trim())} style="width:120px" />
       <div class="small dim">{ct(S.lang, "rp_rate_help")}</div>
     </div>
+    <div class="field">
+      <label for="rpc">{S.lang === "el" ? "Όριο δαπάνης RunPod ανά συνεδρία (USD)" : "RunPod spend limit per session (USD)"}</label>
+      <input id="rpc" type="number" min="0" step="1" placeholder="5" value={S.settings.runpod_cap_usd ?? ""} onchange={(e) => S.set("runpod_cap_usd", e.currentTarget.value.trim())} style="width:120px" />
+      <div class="small dim">{S.lang === "el" ? "Όταν ξοδευτεί αυτό το ποσό από το άνοιγμα της εφαρμογής, δεν ξεκινά άλλη δουλειά. Προεπιλογή 5, 0 = χωρίς όριο. Αλλάζει μόνο εδώ, ποτέ από το Claude ή το ZCode." : "When this much has been spent since the app was opened, no more jobs start. Default 5, 0 = no limit. It can only be changed here, never from Claude or ZCode."}</div>
+    </div>
     {#if rpRes}<div class="msg {rpRes.ok ? 'ok' : 'err'}">{rpRes.text}</div>{/if}
     <RunpodPanel />
   </div>
@@ -268,6 +279,12 @@
       : "How it works: Claude → connection (extension or command) → this program, only inside your computer and behind a secret token → the program sends the job to your RunPod endpoint (or runs on your PC) and saves the video in your folder. Claude asks before spending money. RunPod wakes up by itself for each job (the first video takes 1–3 minutes longer) and goes back to sleep after the queue has been empty for a few minutes. The program must be open (minimised is fine)."}</p>
     <p><b>{S.lang === "el" ? "Βήμα 1" : "Step 1"}</b> — <label class="row" style="display:inline-flex"><input type="checkbox" checked={S.settings.api_enabled === "1"} onchange={(e) => S.set("api_enabled", e.currentTarget.checked ? "1" : "0")} />
       {S.lang === "el" ? "Να επιτρέπεται η σύνδεση με το Claude (ακούει μόνο σε αυτό το PC)" : "Allow the Claude connection (listens on this PC only)"}</label></p>
+    <p><b>{S.lang === "el" ? "Βήμα 2 — Σύνδεση με ένα κουμπί (Claude Desktop και ZCode/GLM)" : "Step 2 — Connect with one button (Claude Desktop and ZCode/GLM)"}</b></p>
+    <div class="row">
+      <button class="primary" disabled={busy === "cc"} onclick={connectClients}>{S.lang === "el" ? "Σύνδεση Claude και ZCode" : "Connect Claude and ZCode"}</button>
+    </div>
+    {#each ccRes as line}<div class="msg ok small">{line}</div>{/each}
+    <p class="small dim">{S.lang === "el" ? "Κλείσε εντελώς και ξανάνοιξε το Claude Desktop / ZCode μετά. Το κλειδί RunPod δεν περνάει ποτέ σε αυτά: μένει μόνο σε αυτή την εφαρμογή. Αν δεν δουλέψει, δες τις χειροκίνητες επιλογές παρακάτω." : "Close and reopen Claude Desktop / ZCode afterwards. Your RunPod key never goes to them: it stays inside this app only. If it does not work, use the manual options below."}</p>
     <p><b>{S.lang === "el" ? "Βήμα 2α — Claude Desktop" : "Step 2a — Claude Desktop"}</b></p>
     <p class="small dim">{S.lang === "el"
       ? "Επιλογή 1 (πιο εύκολη): πάτα «Δείξε το αρχείο extension» και σύρε το αρχείο .mcpb μέσα στο παράθυρο του Claude Desktop (ή διπλό κλικ), μετά «Install». Επιλογή 2: «Δείξε το Connect-Claude.bat» και διπλό κλικ· προσθέτει τη σύνδεση μόνο του, χωρίς αρχείο extension. Μετά κλείσε και ξανάνοιξε το Claude Desktop."
@@ -276,6 +293,9 @@
       <button disabled={!conn} onclick={() => conn && S.run(() => api.reveal(conn!.extension))}>{S.lang === "el" ? "Δείξε το αρχείο extension (.mcpb)" : "Show extension file (.mcpb)"}</button>
       <button disabled={!conn} onclick={() => conn && S.run(() => api.reveal(conn!.installer_bat))}>{S.lang === "el" ? "Δείξε το Connect-Claude.bat" : "Show Connect-Claude.bat"}</button>
     </div>
+    <p><b>{S.lang === "el" ? "Βήμα 2γ — ZCode (GLM)" : "Step 2c — ZCode (GLM)"}</b></p>
+    <p class="small dim">{S.lang === "el" ? "Για να δουλεύει το GLM όπως το Claude: πάτα το κουμπί και κάνε διπλό κλικ στο αρχείο. Προσθέτει τη σύνδεση στο ~/.zcode/cli/config.json. Μετά κλείσε και ξανάνοιξε το ZCode." : "To make GLM work like Claude: press the button and double-click the file. It adds the connection to ~/.zcode/cli/config.json. Then close and reopen ZCode."}</p>
+    <div class="row"><button disabled={!conn} onclick={() => conn && S.run(() => api.reveal(conn!.folder + "\Connect-ZCode.bat"))}>{S.lang === "el" ? "Δείξε το Connect-ZCode.bat" : "Show Connect-ZCode.bat"}</button></div>
     <p><b>{S.lang === "el" ? "Βήμα 2β — Claude Code (τερματικό)" : "Step 2b — Claude Code (terminal)"}</b></p>
     <p class="small dim">{S.lang === "el"
       ? "Αντίγραψε την εντολή, άνοιξε ένα τερματικό και επικόλλησέ την μία φορά. Το Claude Code θα βλέπει τα εργαλεία του προγράμματος."
@@ -291,7 +311,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.0" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.2" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

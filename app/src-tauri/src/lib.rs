@@ -85,7 +85,7 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 const SETTING_KEYS: &[&str] = &[
     "lang", "out_dir", "anthropic_model", "last_project",
     "last_workflow", "models_selected", "enhance_provider", "claude_model", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled",
-    "runpod_endpoint_id", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit",
+    "runpod_endpoint_id", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
 ];
 
 #[derive(Serialize)]
@@ -628,6 +628,63 @@ fn connect_info(app: AppHandle) -> R<ConnectInfo> {
     })
 }
 
+/// Adds `ai-video-studio` (this exe with --mcp) to one MCP config file, keeping everything else and making a backup.
+/// `path_in_json` is where the servers object lives: ["mcpServers"] for Claude Desktop, ["mcp","servers"] for ZCode.
+fn add_mcp_entry(cfg: &Path, path_in_json: &[&str], entry: Value) -> Result<(), String> {
+    let mut root: Value = match std::fs::read_to_string(cfg) {
+        Ok(t) if !t.trim().is_empty() => serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|_| format!("{} is not valid JSON, so it was left untouched", cfg.display()))?,
+        _ => json!({}),
+    };
+    if cfg.exists() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default();
+        let _ = std::fs::copy(cfg, cfg.with_file_name(format!("{}.backup-{stamp}", cfg.file_name().and_then(|f| f.to_str()).unwrap_or("config"))));
+    }
+    let mut cur = &mut root;
+    for k in path_in_json {
+        if !cur.is_object() { *cur = json!({}); }
+        cur = cur.as_object_mut().unwrap().entry(k.to_string()).or_insert_with(|| json!({}));
+    }
+    if !cur.is_object() { *cur = json!({}); }
+    cur.as_object_mut().unwrap().insert("ai-video-studio".into(), entry);
+    if let Some(d) = cfg.parent() { std::fs::create_dir_all(d).map_err(e)?; }
+    std::fs::write(cfg, serde_json::to_string_pretty(&root).map_err(e)?).map_err(e)
+}
+
+/// One button: connects Claude Desktop and ZCode (GLM) to this program. Returns one line per app.
+#[tauri::command]
+fn connect_clients() -> R<Vec<String>> {
+    let exe = std::env::current_exe().map_err(e)?.to_string_lossy().trim_start_matches(r"\?\").to_string();
+    let mut out = Vec::new();
+    // Claude Desktop: the normal location and the Microsoft Store (MSIX) one, whichever exist
+    let mut claude: Vec<PathBuf> = Vec::new();
+    if let Some(a) = std::env::var_os("APPDATA") { claude.push(PathBuf::from(a).join("Claude").join("claude_desktop_config.json")); }
+    if let Some(l) = std::env::var_os("LOCALAPPDATA") {
+        if let Ok(rd) = std::fs::read_dir(PathBuf::from(l).join("Packages")) {
+            for d in rd.flatten() {
+                if d.file_name().to_string_lossy().starts_with("Claude_") {
+                    claude.push(d.path().join("LocalCache").join("Roaming").join("Claude").join("claude_desktop_config.json"));
+                }
+            }
+        }
+    }
+    let existing: Vec<PathBuf> = claude.iter().filter(|p| p.exists()).cloned().collect();
+    let targets: Vec<PathBuf> = if existing.is_empty() { claude.into_iter().take(1).collect() } else { existing };
+    for t in targets {
+        match add_mcp_entry(&t, &["mcpServers"], json!({"command": exe, "args": ["--mcp"]})) {
+            Ok(()) => out.push(format!("Claude Desktop: connected. Close it completely (tray icon, Quit) and open it again. ({})", t.display())),
+            Err(m) => out.push(format!("Claude Desktop: {m}")),
+        }
+    }
+    if let Some(h) = std::env::var_os("USERPROFILE") {
+        let z = PathBuf::from(h).join(".zcode").join("cli").join("config.json");
+        match add_mcp_entry(&z, &["mcp", "servers"], json!({"type": "stdio", "command": exe, "args": ["--mcp"]})) {
+            Ok(()) => out.push("ZCode (GLM): connected. Close ZCode and open it again.".into()),
+            Err(m) => out.push(format!("ZCode: {m}")),
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 fn export_settings(st: State<AppState>, path: String) -> R<()> {
     let m: BTreeMap<String, String> =
@@ -903,7 +960,7 @@ pub fn run() {
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_anthropic, runpod_status, runpod_wake, runpod_sleep,
-            connect_info, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
+            connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output
@@ -959,5 +1016,33 @@ mod pip_tests {
         for bad in ["faster-whisper", "x==1;rm", "--index-url=http://a", "a b==1", "git+https://x==1", "-e==1", "x==", "==1", "x==1 --pre"] {
             assert!(!safe_pip_spec(bad), "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod connect_tests {
+    use super::*;
+
+    #[test]
+    fn mcp_entry_is_merged_and_backed_up() {
+        let d = std::env::temp_dir().join(format!("aivs_mcp_{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("c.json");
+        std::fs::write(&f, "\u{feff}{\"model\":\"glm\",\"mcp\":{\"servers\":{\"x\":{\"command\":\"y\"}}}}").unwrap();
+        add_mcp_entry(&f, &["mcp", "servers"], json!({"command": "app.exe", "args": ["--mcp"]})).unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(v["model"], "glm");
+        assert_eq!(v["mcp"]["servers"]["x"]["command"], "y");
+        assert_eq!(v["mcp"]["servers"]["ai-video-studio"]["args"][0], "--mcp");
+        assert!(std::fs::read_dir(&d).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().contains("backup")));
+        // a broken file is left alone
+        std::fs::write(&f, "{oops").unwrap();
+        assert!(add_mcp_entry(&f, &["mcpServers"], json!({})).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "{oops");
+        // a missing file is created
+        let g = d.join("sub").join("n.json");
+        add_mcp_entry(&g, &["mcpServers"], json!({"command": "a"})).unwrap();
+        assert!(g.exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
