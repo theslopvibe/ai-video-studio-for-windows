@@ -175,6 +175,29 @@ pub fn over_cap(spent: f64, next: f64, cap: f64) -> bool {
     cap > 0.0 && spent + next > cap
 }
 
+/// Atomically books the estimated cost of a job before it starts, so parallel jobs cannot all pass the check together.
+/// Returns false (and books nothing) when the booking would pass the limit.
+pub fn reserve(next: f64, cap: f64) -> bool {
+    let add = (next.max(0.0) * 1e6).round() as u64;
+    let mut cur = SPEND_MICRO.load(Ordering::Relaxed);
+    loop {
+        if over_cap(cur as f64 / 1e6, add as f64 / 1e6, cap) {
+            return false;
+        }
+        match SPEND_MICRO.compare_exchange(cur, cur + add, Ordering::SeqCst, Ordering::Relaxed) {
+            Ok(_) => return true,
+            Err(v) => cur = v,
+        }
+    }
+}
+
+/// Replaces a booking by the measured cost once the job finished. A job that failed keeps its booking (it may have cost money).
+pub fn settle(reserved: f64, actual: f64) {
+    let r = (reserved.max(0.0) * 1e6).round() as u64;
+    let a = if actual.is_finite() { (actual.max(0.0) * 1e6).round() as u64 } else { r };
+    if a >= r { SPEND_MICRO.fetch_add(a - r, Ordering::SeqCst); } else { SPEND_MICRO.fetch_sub(r - a, Ordering::SeqCst); }
+}
+
 // ---- wake / sleep
 
 /// The last wake-up counts as activity, so a manual "Wake up" is not undone by auto-sleep before any job is sent.
@@ -385,6 +408,11 @@ mod tests {
         assert!(!over_cap(4.0, 0.9, 5.0));
         assert!(over_cap(4.5, 0.9, 5.0));
         assert!(!over_cap(99.0, 5.0, 0.0));
+        let before = session_usd();
+        assert!(reserve(0.5, before + 1.0));
+        assert!(!reserve(0.6, before + 1.0), "second booking would pass the limit");
+        settle(0.5, 0.2);
+        assert!((session_usd() - before - 0.2).abs() < 1e-6);
     }
 
     #[test]

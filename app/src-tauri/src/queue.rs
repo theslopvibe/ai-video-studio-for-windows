@@ -188,12 +188,12 @@ async fn run_hosted(app: &AppHandle, job: &Job, wf: &workflows::Workflow, params
         let (a2, id2) = (app.clone(), job.id.clone());
         let note = move |t: &str| set(&a2, &id2, "routing", t, "");
         let cap = crate::runpod::cap_usd(st.db.kv_get("runpod_cap_usd"));
-        if crate::runpod::over_cap(crate::runpod::session_usd(), m.est_usd, cap) {
+        if !crate::runpod::reserve(m.est_usd, cap) {
             return Err(format!("RunPod spend limit reached: ${:.2} spent in this session, the limit is ${cap:.2}. Raise it in Settings → Cloud providers (RunPod spend limit) if you want to continue.", crate::runpod::session_usd()));
         }
         crate::runpod::ensure_awake(&key, endpoint.trim(), &note).await;
         let (b, e, c) = crate::hosted::run_runpod(endpoint.trim(), &key, graph, dph, cancel, &tick, &note).await?;
-        crate::runpod::add_spend(c);
+        crate::runpod::settle(m.est_usd, c);
         cost = c;
         (b, e)
     } else {
