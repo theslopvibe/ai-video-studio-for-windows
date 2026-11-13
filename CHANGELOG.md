@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4
+
+- A RunPod spend limit value that cannot be read now falls back to 5 USD instead of "no limit". Empty still means no limit.
+
 ## 0.9.3
 
 - The RunPod spend limit is off by default (0). Set one in Settings if you want it. When a limit is set, the cost of a job is booked before it starts, so parallel jobs cannot pass it together.
