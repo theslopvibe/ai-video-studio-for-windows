@@ -152,8 +152,8 @@
     </div>
     <div class="field">
       <label for="rpc">{S.lang === "el" ? "Όριο δαπάνης RunPod ανά συνεδρία (USD)" : "RunPod spend limit per session (USD)"}</label>
-      <input id="rpc" type="number" min="0" step="1" placeholder="5" value={S.settings.runpod_cap_usd ?? ""} onchange={(e) => S.set("runpod_cap_usd", e.currentTarget.value.trim())} style="width:120px" />
-      <div class="small dim">{S.lang === "el" ? "Όταν ξοδευτεί αυτό το ποσό από το άνοιγμα της εφαρμογής, δεν ξεκινά άλλη δουλειά. Προεπιλογή 5, 0 = χωρίς όριο. Αλλάζει μόνο εδώ, ποτέ από το Claude ή το ZCode." : "When this much has been spent since the app was opened, no more jobs start. Default 5, 0 = no limit. It can only be changed here, never from Claude or ZCode."}</div>
+      <input id="rpc" type="number" min="0" step="1" placeholder="0" value={S.settings.runpod_cap_usd ?? ""} onchange={(e) => S.set("runpod_cap_usd", e.currentTarget.value.trim())} style="width:120px" />
+      <div class="small dim">{S.lang === "el" ? "Όταν ξοδευτεί αυτό το ποσό από το άνοιγμα της εφαρμογής, δεν ξεκινά άλλη δουλειά. Προεπιλογή 0 = χωρίς όριο. Αλλάζει μόνο εδώ, ποτέ από το Claude ή το ZCode." : "When this much has been spent since the app was opened, no more jobs start. Default 0 = no limit. It can only be changed here, never from Claude or ZCode."}</div>
     </div>
     {#if rpRes}<div class="msg {rpRes.ok ? 'ok' : 'err'}">{rpRes.text}</div>{/if}
     <RunpodPanel />
@@ -284,7 +284,7 @@
       <button class="primary" disabled={busy === "cc"} onclick={connectClients}>{S.lang === "el" ? "Σύνδεση Claude και ZCode" : "Connect Claude and ZCode"}</button>
     </div>
     {#each ccRes as line}<div class="msg ok small">{line}</div>{/each}
-    <p class="small dim">{S.lang === "el" ? "Κλείσε εντελώς και ξανάνοιξε το Claude Desktop / ZCode μετά. Το κλειδί RunPod δεν περνάει ποτέ σε αυτά: μένει μόνο σε αυτή την εφαρμογή. Αν δεν δουλέψει, δες τις χειροκίνητες επιλογές παρακάτω." : "Close and reopen Claude Desktop / ZCode afterwards. Your RunPod key never goes to them: it stays inside this app only. If it does not work, use the manual options below."}</p>
+    <p class="small dim">{S.lang === "el" ? "Πρώτα εγκατάστησε το Claude Desktop και/ή το ZCode (zcode.z.ai) και άνοιξέ τα μία φορά· μετά πάτα το κουμπί και ξανάνοιξέ τα. Το κλειδί RunPod δεν περνάει ποτέ σε αυτά: μένει μόνο σε αυτή την εφαρμογή. Αν δεν δουλέψει, δες τις χειροκίνητες επιλογές παρακάτω." : "First install Claude Desktop and/or ZCode (zcode.z.ai) and open them once; then press the button and reopen them. Your RunPod key never goes to them: it stays inside this app only. If it does not work, use the manual options below."}</p>
     <p><b>{S.lang === "el" ? "Βήμα 2α — Claude Desktop" : "Step 2a — Claude Desktop"}</b></p>
     <p class="small dim">{S.lang === "el"
       ? "Επιλογή 1 (πιο εύκολη): πάτα «Δείξε το αρχείο extension» και σύρε το αρχείο .mcpb μέσα στο παράθυρο του Claude Desktop (ή διπλό κλικ), μετά «Install». Επιλογή 2: «Δείξε το Connect-Claude.bat» και διπλό κλικ· προσθέτει τη σύνδεση μόνο του, χωρίς αρχείο extension. Μετά κλείσε και ξανάνοιξε το Claude Desktop."
@@ -311,7 +311,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.2" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.3" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}
