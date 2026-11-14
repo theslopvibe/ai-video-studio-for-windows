@@ -406,10 +406,59 @@ created: {}
     Ok(())
 }
 
+/// True for an address that is on the public internet (not loopback, private, link-local, unspecified, multicast, CGNAT).
+pub fn ip_is_public(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v) => {
+            let o = v.octets();
+            !(v.is_loopback() || v.is_private() || v.is_link_local() || v.is_unspecified() || v.is_multicast() || v.is_broadcast()
+                || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0)
+        }
+        IpAddr::V6(v) => {
+            if let Some(m) = v.to_ipv4_mapped() { return ip_is_public(IpAddr::V4(m)); }
+            let s = v.segments();
+            !(v.is_loopback() || v.is_unspecified() || v.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+/// https, no credentials, and a host that is not `localhost` or a private/loopback/link-local IP literal.
+pub fn host_literal_ok(u: &reqwest::Url) -> bool {
+    if u.scheme() != "https" || !u.username().is_empty() || u.password().is_some() { return false; }
+    match u.host() {
+        Some(url::Host::Domain(d)) => { let d = d.to_ascii_lowercase(); d != "localhost" && !d.ends_with(".localhost") && !d.ends_with(".local") && !d.ends_with(".internal") }
+        Some(url::Host::Ipv4(a)) => ip_is_public(std::net::IpAddr::V4(a)),
+        Some(url::Host::Ipv6(a)) => ip_is_public(std::net::IpAddr::V6(a)),
+        None => false,
+    }
+}
+
+/// A result URL comes from the worker, so it is checked before anything is fetched: https only, and every address
+/// its host resolves to must be public.
+pub async fn check_download_url(url: &str) -> Result<(), String> {
+    let u = reqwest::Url::parse(url).map_err(|_| "The worker returned a result address that is not valid.".to_string())?;
+    if !host_literal_ok(&u) { return Err("The worker returned a result address that is not a public https address, so it was not downloaded.".into()); }
+    if let Some(url::Host::Domain(d)) = u.host() {
+        let addrs = tokio::net::lookup_host((d, u.port_or_known_default().unwrap_or(443))).await.map_err(|e| format!("Could not look up the result host: {e}"))?;
+        for a in addrs {
+            if !ip_is_public(a.ip()) { return Err("The result address points to a private or local address, so it was not downloaded.".into()); }
+        }
+    }
+    Ok(())
+}
+
 async fn download(app: &AppHandle, id: &str, url: &str, path: &std::path::Path, cancel: &AtomicBool) -> Result<(), String> {
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
-    let r = reqwest::Client::new().get(url).timeout(Duration::from_secs(600)).send().await.map_err(|e| e.to_string())?;
+    check_download_url(url).await?;
+    // redirects are followed only to https hosts that are not local or private
+    let policy = reqwest::redirect::Policy::custom(|a| {
+        if a.previous().len() >= 5 { return a.error("too many redirects"); }
+        if host_literal_ok(a.url()) { a.follow() } else { a.error("redirect to a non-public address") }
+    });
+    let r = reqwest::Client::builder().redirect(policy).build().map_err(|e| e.to_string())?
+        .get(url).timeout(Duration::from_secs(600)).send().await.map_err(|e| e.to_string())?;
     if !r.status().is_success() {
         return Err(format!("Download failed: HTTP {}", r.status()));
     }
@@ -485,6 +534,23 @@ fn find_inline(v: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn download_urls_must_be_public_https() {
+        let ok = |u: &str| super::host_literal_ok(&reqwest::Url::parse(u).unwrap());
+        assert!(ok("https://bucket.s3.amazonaws.com/x.mp4?sig=1"));
+        assert!(ok("https://1.1.1.1/x"));
+        assert!(!ok("http://bucket.s3.amazonaws.com/x"));
+        assert!(!ok("https://localhost/x"));
+        assert!(!ok("https://127.0.0.1/x"));
+        assert!(!ok("https://10.0.0.5/x"));
+        assert!(!ok("https://192.168.1.1/x"));
+        assert!(!ok("https://169.254.169.254/latest/meta-data"));
+        assert!(!ok("https://[::1]/x"));
+        assert!(!ok("https://[fe80::1]/x"));
+        assert!(!ok("https://[::ffff:127.0.0.1]/x"));
+        assert!(!ok("https://user:pw@example.com/x"));
+        assert!(!ok("https://printer.local/x"));
+    }
     use super::*;
     #[test]
     fn local_mode_swaps_save_node_and_detects_inline() {

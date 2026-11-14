@@ -147,12 +147,16 @@ impl Vast {
 
     pub async fn generate(
         &self,
-        key: &str,
+        _key: &str,
         auth_data: &Value,
         workflow: &Value,
         request_id: &str,
     ) -> Result<Value, String> {
         let url = auth_data["url"].as_str().ok_or("route without url")?;
+        // the worker address comes from Vast's route reply: only a secure address is ever contacted
+        if !worker_url_ok(url) {
+            return Err("Vast returned a worker address that is not a secure https address, so it was not contacted.".into());
+        }
         let body = json!({
             "auth_data": auth_data,
             "session_id": Value::Null,
@@ -163,8 +167,8 @@ impl Vast {
             let c = self.worker_client().await?;
             let t0 = std::time::Instant::now();
             crate::log::info(&format!("worker generate → {endpoint} (request {request_id})"));
-            // the account key is only ever sent over a verified TLS connection (there is no insecure retry)
-            match c.post(&endpoint).json(&body).bearer_auth(key).send().await {
+            // the worker is authenticated by the signed auth_data in the body; the Vast account key is never sent to it
+            match c.post(&endpoint).json(&body).send().await {
                 Ok(r) => {
                     let code = r.status();
                     let text = r.text().await.map_err(err)?;
@@ -522,8 +526,15 @@ impl Vast {
     }
 }
 
+/// A GPU model name safe to put in a Vast search string.
+pub fn gpu_name_ok(g: &str) -> bool {
+    !g.is_empty() && g.len() <= 40 && g.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '_' | '.' | '-'))
+}
+
 /// Merge `gpu_name in [...]` into an existing search_params string, preserving the other filters.
 pub fn merge_gpu_filter(existing: &str, gpus: &[String]) -> String {
+    // GPU names go into a search string: anything but letters, digits, space, _ . - is dropped
+    let gpus: Vec<String> = gpus.iter().filter(|g| gpu_name_ok(g)).cloned().collect();
     let trimmed = existing.trim();
     let mut parts: Vec<String> = vec![];
     if trimmed.starts_with('{') {
@@ -571,9 +582,33 @@ fn regex_free_strip_gpu(s: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A worker address from a Vast route must be https with a real host (no credentials in the URL).
+pub fn worker_url_ok(url: &str) -> bool {
+    match reqwest::Url::parse(url) {
+        Ok(u) => u.scheme() == "https" && u.host_str().is_some() && u.username().is_empty() && u.password().is_none(),
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gpu_names_are_checked_before_search() {
+        assert!(gpu_name_ok("RTX 4090") && gpu_name_ok("RTX_A6000") && gpu_name_ok("A40"));
+        assert!(!gpu_name_ok("RTX_4090] verified=false [x") && !gpu_name_ok("") && !gpu_name_ok("a;b"));
+        let r = merge_gpu_filter("verified=true", &["RTX_4090".into(), "x] rented=true [y".into()]);
+        assert_eq!(r, "verified=true gpu_name in [RTX_4090]");
+    }
+    #[test]
+    fn worker_url_must_be_https() {
+        assert!(worker_url_ok("https://1.2.3.4:8443"));
+        assert!(worker_url_ok("https://worker.vast.ai/"));
+        assert!(!worker_url_ok("http://1.2.3.4:8443"));
+        assert!(!worker_url_ok("ftp://x.y"));
+        assert!(!worker_url_ok("https://user:pw@evil.com"));
+        assert!(!worker_url_ok("nonsense"));
+    }
     #[test]
     fn gpu_filter_replaces_old_clause() {
         let r = merge_gpu_filter("verified=true rentable=true gpu_name in [RTX_3090] rented=false", &["RTX_4090".into(), "RTX_5090".into()]);

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.9.7"
+version = "0.9.8"
 description = "AI Video Studio For Windows"
 authors = ["AI Video Studio For Windows"]
 edition = "2021"
@@ -20,6 +20,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process", "io-util", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+url = "2"
 futures-util = "0.3"
 keyring = { version = "3", features = ["windows-native"] }
 rusqlite = { version = "0.32", features = ["bundled"] }

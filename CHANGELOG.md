@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.8
+
+- Security fixes for Vast. The Vast account key is no longer sent to the worker (the signed route data is enough), and a worker address must be https. A result file is downloaded only from a public https address (no localhost, private or link-local addresses, also after redirects). Importing a settings file can no longer change the endpoint name, GPU choice, cloud choice, card limits or RunPod instance; the app's own Vast machines are matched by exact label, and GPU names are checked before they go into a search.
+
 ## 0.9.7
 
 - **Vast.ai is back, next to RunPod.** Settings has "Which cloud do you use?": Vast.ai (rented cards) or RunPod. Only the cloud you pick works: its panel, tools and modes are shown and used, the other one stays idle and hidden (its keys stay saved). This covers videos from the app and from Claude / GLM (the other cloud's MCP tools answer with a clear message). Existing installs keep RunPod if a RunPod key is saved, otherwise Vast if a Vast key is saved. The Vast side is the one from 0.8.1 (cards, GPU and cost tab, speed test, watchdog, several cards). MCP package 0.6.0 (the `.mcpb` has the Vast tools again).

@@ -116,6 +116,23 @@ const SETTING_KEYS: &[&str] = &[
     "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_name_1", "runpod_name_2", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
 ];
 
+/// Settings a shared settings file must never change: folders, hosts, and what decides which cloud is used and which
+/// rented machines the app treats as its own (a file from someone else must not point it at your other machines).
+const IMPORT_DENY: &[&str] = &["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled", "endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "card_models", "worker_pack", "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active"];
+
+/// The prefix the app's own Vast serverless workers carry in their label: the saved endpoint name when it is a plain
+/// name (letters, digits, `_ -`, 3-40 chars), otherwise the default. Never empty, so it cannot match every machine.
+pub fn own_prefix(st: &AppState) -> String {
+    let n = st.db.kv_get("endpoint_name").unwrap_or_default();
+    let n = n.trim();
+    if n.len() >= 3 && n.len() <= 40 && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { n.to_string() } else { "comfyui-json".into() }
+}
+
+/// Is this Vast instance one of this app's own (its card label exactly, or a worker of its own endpoint)?
+pub fn is_own_label(label: &str, prefix: &str) -> bool {
+    label == card::LABEL || (!prefix.is_empty() && label.starts_with(&format!("{prefix}:")))
+}
+
 #[derive(Serialize)]
 struct Bootstrap {
     projects: Vec<Project>,
@@ -371,7 +388,7 @@ fn job_enqueue(
     let suffix = st.db.projects().map_err(e)?.into_iter().find(|x| x.id == project_id).map(|x| x.suffix).unwrap_or_default();
     let prompt = if suffix.trim().is_empty() { prompt.trim().to_string() } else { format!("{}, {}", prompt.trim().trim_end_matches(','), suffix.trim()) };
     p.insert("prompt".into(), json!(prompt));
-    let gpu = p.get("gpu").and_then(|v| v.as_str()).filter(|g| !g.is_empty()).map(String::from).unwrap_or_else(|| st.db.kv_get("gpu_selection").unwrap_or_default());
+    let gpu = p.get("gpu").and_then(|v| v.as_str()).filter(|g| vast::gpu_name_ok(g)).map(String::from).unwrap_or_else(|| st.db.kv_get("gpu_selection").unwrap_or_default());
     let j = Job {
         id: job_id,
         project_id,
@@ -606,13 +623,13 @@ async fn vast_destroy(st: State<'_, AppState>, id: i64) -> R<String> {
 
 pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
     let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
-    let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    let endpoint = own_prefix(st);
     WARM_CANCEL.store(true, Ordering::SeqCst);
     // cancel waiting jobs too, otherwise Vast starts a new card for them right after this one closes
     for f in st.cancels.lock().unwrap().values() { f.store(true, Ordering::Relaxed); }
     let list = st.vast.instances(&key).await?;
     // only this app's own cards (workers of its endpoint); other cards on the account are never touched
-    let ours = |i: &vast::InstanceInfo| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL;
+    let ours = |i: &vast::InstanceInfo| is_own_label(&i.label, &endpoint);
     let mut n = 0;
     for i in list.iter().filter(|i| ours(i) && (id == 0 || i.id == id)) {
         st.vast.destroy_instance(&key, i.id).await?;
@@ -674,7 +691,7 @@ pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Optio
             }
         }
         let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
-        let want: Vec<String> = st.db.kv_get("gpu_selection").unwrap_or_default().split(',').filter(|x| !x.is_empty()).map(String::from).collect();
+        let want: Vec<String> = st.db.kv_get("gpu_selection").unwrap_or_default().split(',').filter(|x| vast::gpu_name_ok(x)).map(String::from).collect();
         if !want.is_empty() && st.db.kv_get("gpu_applied").unwrap_or_default() != want.join(",") {
             apply_gpu_filter(&st, &want, 24.0, 0.0, false).await?;
         }
@@ -718,9 +735,9 @@ pub async fn auto_close_loop(app: AppHandle) {
         let limit: u64 = st.db.kv_get("auto_close_min").and_then(|v| v.parse().ok()).unwrap_or(10);
         if limit == 0 || last_active.elapsed() < std::time::Duration::from_secs(limit * 60) { continue; }
         let Some(key) = secrets::get("vast_api_key") else { continue };
-        let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+        let endpoint = own_prefix(&st);
         if let Ok(list) = st.vast.instances(&key).await {
-            if list.iter().any(|i| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL) {
+            if list.iter().any(|i| is_own_label(&i.label, &endpoint)) {
                 log::info(&format!("auto-close: nothing happened for {limit} min, closing the card(s)"));
                 if let Ok(m) = stop_vast(&st, 0).await {
                     use tauri::Emitter;
@@ -1057,8 +1074,8 @@ fn export_settings(st: State<AppState>, path: String) -> R<()> {
 fn import_settings(st: State<AppState>, path: String) -> R<()> {
     let m: BTreeMap<String, String> = serde_json::from_str(&std::fs::read_to_string(path).map_err(e)?).map_err(e)?;
     for (k, v) in m {
-        // paths and hosts are never imported: a shared settings file must not redirect an executable folder or the API-key host
-        if SETTING_KEYS.contains(&k.as_str()) && !["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled"].contains(&k.as_str()) {
+        // paths, hosts and anything that decides which cloud / which instances the app touches are never imported from a file
+        if SETTING_KEYS.contains(&k.as_str()) && !IMPORT_DENY.contains(&k.as_str()) {
             st.db.kv_set(&k, &v).map_err(e)?;
         }
     }
@@ -1339,6 +1356,23 @@ pub fn run() {
                 tauri::async_runtime::block_on(runpod::sleep_on_exit(&app.state::<AppState>()));
             }
         });
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+    #[test]
+    fn own_labels_are_exact() {
+        assert!(is_own_label("aivs-card", "comfyui-json"));
+        assert!(is_own_label("comfyui-json:123", "comfyui-json"));
+        assert!(!is_own_label("comfyui-json", "comfyui-json"));
+        assert!(!is_own_label("my-training-run", "comfyui-json"));
+        assert!(!is_own_label("anything:1", ""));
+    }
+    #[test]
+    fn import_never_changes_who_is_ours() {
+        for k in ["endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "out_dir"] { assert!(IMPORT_DENY.contains(&k)); }
+    }
 }
 
 #[cfg(test)]
