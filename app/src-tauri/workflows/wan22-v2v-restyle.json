@@ -1,0 +1,299 @@
+{
+ "meta": {
+  "id": "wan22-v2v-restyle",
+  "name_el": "Video → Νέο video από το clip σου (Wan 2.2, αλλαγή στυλ)",
+  "name_en": "Video → New video from your clip (Wan 2.2 restyle)",
+  "desc_el": "Παίρνει το video σου και το αλλάζει με βάση το prompt (στυλ, εμφάνιση) κρατώντας την κίνηση. \"Αλλαγή\" 1 = μεγάλη αλλαγή, 3 = ελαφριά. Θέλει δυνατή κάρτα.",
+  "desc_en": "Takes your video and changes it following the prompt (style, look, details) while keeping the motion. \"Change\" 1 = big change, 3 = subtle. Needs a strong GPU.",
+  "kind": "v2v",
+  "models": [
+   "umt5_xxl_fp8_e4m3fn_scaled",
+   "wan_2.1_vae",
+   "wan2.2_t2v_high_noise_14B_fp8",
+   "wan2.2_t2v_low_noise_14B_fp8",
+   "wan2.2_t2v_lightx2v_4steps_lora"
+  ],
+  "pack": "wan22-t2v",
+  "vram_gb": 24,
+  "est_sec": 120,
+  "inputs": [
+   {
+    "key": "video",
+    "type": "video",
+    "required": true,
+    "label_el": "Video",
+    "label_en": "Video"
+   },
+   {
+    "key": "prompt",
+    "type": "text",
+    "required": true,
+    "label_el": "Prompt",
+    "label_en": "Prompt"
+   },
+   {
+    "key": "negative",
+    "type": "text",
+    "default": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走，裸露，NSFW",
+    "advanced": true,
+    "label_el": "Αρνητικό prompt",
+    "label_en": "Negative prompt"
+   },
+   {
+    "key": "start_step",
+    "type": "int",
+    "default": 1,
+    "min": 1,
+    "max": 3,
+    "step": 1,
+    "label_el": "Αλλαγή (1 = μεγάλη, 3 = ελαφριά)",
+    "label_en": "Change (1 = big, 3 = subtle)"
+   },
+   {
+    "key": "width",
+    "type": "int",
+    "default": 832,
+    "min": 256,
+    "max": 1280,
+    "step": 16,
+    "label_el": "Πλάτος",
+    "label_en": "Width"
+   },
+   {
+    "key": "height",
+    "type": "int",
+    "default": 480,
+    "min": 256,
+    "max": 1280,
+    "step": 16,
+    "label_el": "Ύψος",
+    "label_en": "Height"
+   },
+   {
+    "key": "length",
+    "type": "int",
+    "default": 49,
+    "min": 17,
+    "max": 121,
+    "step": 4,
+    "label_el": "Μέγιστα καρέ (4n+1)",
+    "label_en": "Max frames (4n+1)"
+   },
+   {
+    "key": "seed",
+    "type": "seed",
+    "default": "__RANDOM_INT__",
+    "label_el": "Seed (κενό = τυχαίο)",
+    "label_en": "Seed (blank = random)"
+   }
+  ],
+  "priority": 235,
+  "good_en": "Restyle a clip (cartoon, painting, night, other season) while the motion stays.",
+  "good_el": "Αλλαγή στυλ σε clip (κινούμενο σχέδιο, πίνακας, νύχτα, άλλη εποχή) με την ίδια κίνηση."
+ },
+ "workflow": {
+  "90": {
+   "inputs": {
+    "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    "type": "wan",
+    "device": "default"
+   },
+   "class_type": "CLIPLoader",
+   "_meta": {
+    "title": "CLIPLoader"
+   }
+  },
+  "91": {
+   "inputs": {
+    "text": "{{negative}}",
+    "clip": [
+     "90",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Negative"
+   }
+  },
+  "92": {
+   "inputs": {
+    "vae_name": "wan_2.1_vae.safetensors"
+   },
+   "class_type": "VAELoader",
+   "_meta": {
+    "title": "VAELoader"
+   }
+  },
+  "99": {
+   "inputs": {
+    "text": "{{prompt}}",
+    "clip": [
+     "90",
+     0
+    ]
+   },
+   "class_type": "CLIPTextEncode",
+   "_meta": {
+    "title": "Positive"
+   }
+  },
+  "102": {
+   "inputs": {
+    "unet_name": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+    "weight_dtype": "default"
+   },
+   "class_type": "UNETLoader",
+   "_meta": {
+    "title": "UNETLoader"
+   }
+  },
+  "106": {
+   "inputs": {
+    "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
+    "strength_model": 1.0,
+    "model": [
+     "102",
+     0
+    ]
+   },
+   "class_type": "LoraLoaderModelOnly",
+   "_meta": {
+    "title": "LoraLoaderModelOnly"
+   }
+  },
+  "94": {
+   "inputs": {
+    "shift": 5.0,
+    "model": [
+     "106",
+     0
+    ]
+   },
+   "class_type": "ModelSamplingSD3",
+   "_meta": {
+    "title": "ModelSamplingSD3"
+   }
+  },
+  "1": {
+   "class_type": "AIVSLoadVideoBase64",
+   "inputs": {
+    "video_b64": "{{video}}"
+   }
+  },
+  "2": {
+   "class_type": "GetVideoComponents",
+   "inputs": {
+    "video": [
+     "1",
+     0
+    ]
+   }
+  },
+  "3": {
+   "class_type": "ImageScale",
+   "inputs": {
+    "image": [
+     "2",
+     0
+    ],
+    "upscale_method": "lanczos",
+    "width": "{{width}}",
+    "height": "{{height}}",
+    "crop": "center"
+   }
+  },
+  "4": {
+   "class_type": "ImageFromBatch",
+   "inputs": {
+    "image": [
+     "3",
+     0
+    ],
+    "batch_index": 0,
+    "length": "{{length}}"
+   }
+  },
+  "5": {
+   "class_type": "VAEEncode",
+   "inputs": {
+    "pixels": [
+     "4",
+     0
+    ],
+    "vae": [
+     "92",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "KSamplerAdvanced",
+   "inputs": {
+    "add_noise": "enable",
+    "noise_seed": "{{seed}}",
+    "steps": 4,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "start_at_step": "{{start_step}}",
+    "end_at_step": 10000,
+    "return_with_leftover_noise": "disable",
+    "model": [
+     "94",
+     0
+    ],
+    "positive": [
+     "99",
+     0
+    ],
+    "negative": [
+     "91",
+     0
+    ],
+    "latent_image": [
+     "5",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "6",
+     0
+    ],
+    "vae": [
+     "92",
+     0
+    ]
+   }
+  },
+  "8": {
+   "class_type": "CreateVideo",
+   "inputs": {
+    "images": [
+     "7",
+     0
+    ],
+    "fps": [
+     "2",
+     2
+    ]
+   }
+  },
+  "9": {
+   "class_type": "SaveVideo",
+   "inputs": {
+    "video": [
+     "8",
+     0
+    ],
+    "filename_prefix": "video/v2v",
+    "format": "mp4",
+    "codec": "auto"
+   }
+  }
+ }
+}

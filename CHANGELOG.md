@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.6
+
+- **Video to video.** New mode "Video → New video from your clip (Wan 2.2 restyle)" in the Video tools: give a clip and a prompt, and it changes the look while keeping the motion (a Change slider: 1 big, 3 subtle). Runs on your own PC with a strong GPU; not available on RunPod yet (the RunPod worker cannot take a video input). Untested on a real ComfyUI so far.
+
 ## 0.9.5
 
 - **Two RunPod instances.** Settings > RunPod has an "instance in use" picker with a name for each (for example "Mine" and "Antonis"), each with its own API key and endpoint id, so two different accounts with their own billing can live in one app. Only the selected one runs jobs, wakes and sleeps; the other is put to sleep too when idle or when the app closes. Claude and GLM can switch with `set_defaults` (`runpod_instance`) and see the one in use in `runpod_status`. Everything an instance holds (models, workflows) is up to its owner: add your own workflows with Import in the Models page. MCP package 0.5.0.
