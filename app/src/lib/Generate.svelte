@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type InputDef } from "./api";
+  import { api, type InputDef, type GpuOffer } from "./api";
   import { ct } from "./chatStrings";
   import { S } from "./store.svelte";
   import JobCard from "./JobCard.svelte";
@@ -14,7 +14,10 @@
   let imgs = $state<Record<string, Img>>({}); // by slot key: image (start), image_end (end)
   let scenes = $state<Scene[]>([]); // finished scenes waiting to be generated together
   let dragging = $state("");
+  let offers = $state<GpuOffer[]>([]);
+  let offersFor = $state(0);
   let runOn = $state(""); // "" = the default from Settings
+  let gpu = $state(""); // Vast only: "" = automatic (the card chosen in GPU & Cost)
   let prompt = $state("");
   let before = $state<string | null>(null);
   let batch = $state(false);
@@ -30,7 +33,7 @@
   const ORDER = $derived(where === "runpod" ? ["runpod", "paid", "open"] : ["open", "paid", "runpod"]);
   const rank = (w: { meta: { provider?: string } }) => ORDER.indexOf(grpOf(w));
   let list = $derived(S.workflows.filter((w) => inScope(w) && (kind === "t2a" ? w.meta.kind === "t2a" : kind === "t2i" ? w.meta.kind === "t2i" : w.meta.kind !== "t2i" && w.meta.kind !== "t2a" && isI2v(w) === (kind === "i2v"))).sort((a, b) => rank(a) - rank(b)));
-  const GLABEL = $derived<Record<string, string>>({ runpod: ct(S.lang, "rp_grp_runpod"), paid: S.lang === "el" ? "Επί πληρωμής (ανά αποτέλεσμα, θέλει API key)" : "Paid (per result, needs an API key)", open: ct(S.lang, "rp_grp_pc") });
+  const GLABEL = $derived<Record<string, string>>({ runpod: ct(S.lang, "rp_grp_runpod"), paid: S.lang === "el" ? "Επί πληρωμής (ανά αποτέλεσμα, θέλει API key)" : "Paid (per result, needs an API key)", open: S.cloud === "vast" ? (S.lang === "el" ? "Open source (PC ή ενοικιαζόμενη GPU)" : "Open source (your PC or a rented GPU)") : ct(S.lang, "rp_grp_pc") });
   let groups = $derived(ORDER.map((id) => ({ id, label: GLABEL[id], items: list.filter((w) => grpOf(w) === id) })).filter((g) => g.items.length));
   let wf = $derived(list.find((w) => w.meta.id === wfId) ?? list[0]);
   let slots = $derived((wf?.meta.inputs ?? []).filter((i) => i.type === "image"));
@@ -82,8 +85,26 @@
   function preset(w: number, h: number) {
     values[wfId] = { ...(values[wfId] ?? {}), width: w, height: h };
   }
-  // Typical price of one result (RunPod and paid API modes). Open-source modes on this PC are free.
-  let estimate = $derived(wf?.meta.provider ? (wf.meta.est_usd ?? 0) : 0);
+  // Typical price of one result. RunPod and paid API modes: measured/typical USD. Vast: card price per hour x typical time.
+  // Open-source modes on this PC are free.
+  let chosenGpu = $derived(offers.find((o) => o.name === gpu));
+  let price = $derived(chosenGpu ? chosenGpu.median_price : S.dph);
+  let vastRun = $derived(where === "vast" && !wf?.meta.provider);
+  let estimate = $derived(wf?.meta.provider ? (wf.meta.est_usd ?? 0) : vastRun && wf && price > 0 ? (wf.meta.est_sec * price) / 3600 : 0);
+  let usable = $derived(offers.filter((o) => o.vram_gb >= (wf?.meta.vram_gb ?? 0)));
+  let packMissing = $derived.by(() => {
+    if (!vastRun) return false;
+    const p = S.boot?.models.find((m) => m.id === wf?.meta.pack);
+    return !!p && !p.in_template && !(S.settings.models_selected ?? "").split(",").includes(p.id);
+  });
+
+  // Live card list for the selected mode's VRAM need (read-only Vast query, needs the key).
+  $effect(() => {
+    const need = wf?.meta.vram_gb ?? 0;
+    if (!vastRun || !need || !S.secrets.vast_api_key || offersFor === need) return;
+    offersFor = need;
+    api.gpuOffers(need).then((r) => { offers = r; if (gpu && !r.some((o) => o.name === gpu)) gpu = ""; }).catch(() => { offersFor = 0; });
+  });
 
   // Downscale to <=1280px JPEG so the job stays small; match the video size to the start image's shape.
   async function pickFile(file: File | null | undefined, key: string) {
@@ -132,6 +153,7 @@
     const prov = wf?.meta.provider;
     if (prov === "runpod" && !S.runpodReady) { S.notify(ct(S.lang, "rp_need"), true); S.page = "settings"; return; }
     if (prov && KEY_OF[prov] && !S.secrets[KEY_OF[prov]]) { S.notify(S.t("need_key"), true); S.page = "settings"; return; }
+    if (vastRun && !S.secrets.vast_api_key) { S.notify(S.t("need_key_v"), true); S.page = "settings"; return; }
     // Items to queue: image modes use the scene list (+ the form if filled); text modes use one prompt per line.
     let items: { prompt: string; imgs: Record<string, Img> }[];
     if (kind === "i2v") {
@@ -147,6 +169,7 @@
     if (!items.length) return S.notify(S.t("empty_prompt"), true);
     await S.set("last_workflow", wfId);
     const base = collect();
+    if (gpu && chosenGpu && vastRun) { base.gpu = gpu; base.gpu_dph = chosenGpu.median_price; }
     if (runOn) base.provider = runOn;
     let n = 0;
     for (const [i, it] of items.entries()) {
@@ -267,14 +290,29 @@
       <div class="row small" style="margin-top:8px">
         <label class="dim" for="runon">{S.t("run_on")}</label>
         <select id="runon" bind:value={runOn} style="width:auto">
-          <option value="">{S.t("run_default")} ({S.provider === "local" ? S.t("run_pc") : "RunPod"})</option>
+          <option value="">{S.t("run_default")} ({S.provider === "local" ? S.t("run_pc") : S.cloud === "vast" ? "Vast" : "RunPod"})</option>
           <option value="local">{S.t("run_pc")}</option>
-          <option value="runpod">RunPod</option>
+          <option value={S.cloud}>{S.cloud === "vast" ? "Vast" : "RunPod"}</option>
         </select>
         {#if wf?.meta.provider}<span class="dim">{wf.meta.provider}</span>{/if}
         {#if estimate > 0}<b>≈ ${estimate.toFixed(3)} / {S.t("per_item")}</b>{/if}
       </div>
       {#if wf?.meta.provider === "runpod" && S.rp?.state === "asleep"}<div class="small dim">{ct(S.lang, "rp_wake_hint")}</div>{/if}
+      {#if vastRun}
+        <div class="row small" style="margin-top:8px">
+          <label class="dim" for="gpu">{S.t("gpu_card")}</label>
+          <select id="gpu" bind:value={gpu} style="width:auto;max-width:100%">
+            <option value="">{S.t("gpu_auto")}{S.settings.gpu_selection ? " (" + S.settings.gpu_selection.replaceAll("_", " ") + ")" : ""}</option>
+            {#each usable as o}<option value={o.name}>{o.name.replaceAll("_", " ")} · {o.vram_gb} GB · ${o.median_price.toFixed(2)}/{S.t("per_hour")}</option>{/each}
+          </select>
+        </div>
+        {#if !S.secrets.vast_api_key}<div class="small dim">{S.t("gpu_need_key")}</div>{/if}
+        {#if packMissing}
+          <div class="msg err" style="margin-top:6px">{S.t("pack_missing")}
+            <button class="ghost" onclick={async () => { await S.set("models_selected", [...(S.settings.models_selected ?? "").split(",").filter(Boolean), wf!.meta.pack!].join(",")); S.page = "models"; }}>{S.t("pack_go")}</button>
+          </div>
+        {/if}
+      {/if}
     </div>
 
     {#if kind === "i2v" && scenes.length}
@@ -334,7 +372,7 @@
 
     <div class="row submitbar">
       <div class="grow small dim">
-        {#if estimate > 0}{S.t("est_cost")}: <b>${estimate.toFixed(3)}</b> {S.t("est_cost_note")}{:else}{S.t("no_price")}{/if}
+        {#if estimate > 0}{S.t("est_cost")}: <b>${estimate.toFixed(3)}</b>{#if vastRun} ({chosenGpu ? chosenGpu.name.replaceAll("_", " ") + " · " : ""}${price.toFixed(2)}/{S.t("per_hour")}) {S.t("est_cost_note_v")}{:else} {S.t("est_cost_note")}{/if}{:else}{vastRun ? S.t("no_price_v") : S.t("no_price")}{/if}
       </div>
       <button class="primary big" onclick={submit} disabled={!wf}>{batch || scenes.length ? S.t("add_queue_n") : S.t("add_queue")}</button>
     </div>

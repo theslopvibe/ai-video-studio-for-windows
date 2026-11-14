@@ -5,7 +5,7 @@ import { api, type Bootstrap, type Job, type Project, type RunpodStatus, type Wo
 import { tr, type Key, type Lang } from "./i18n";
 
 export type Theme = "dark" | "light" | "system";
-export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "models" | "guide" | "editor" | "logs" | "settings";
+export type Page = "generate" | "chat" | "queue" | "library" | "projects" | "gpu" | "models" | "guide" | "editor" | "logs" | "settings";
 
 class Store {
   ready = $state(false);
@@ -35,13 +35,21 @@ class Store {
 
   t = (k: Key) => tr(this.lang, k);
 
-  /** Where open-source modes run by default: RunPod (cloud, automatic) unless the user chose this PC. */
-  get provider(): "runpod" | "local" {
-    return this.settings.provider === "local" ? "local" : "runpod";
+  /** The cloud picked in Settings: "vast" (rented cards) or "runpod" (serverless). The app fills it in at start. */
+  get cloud(): "vast" | "runpod" {
+    return this.settings.cloud_provider === "vast" ? "vast" : "runpod";
   }
-  /** RunPod needs both the API key and the endpoint id. */
+  /** Where open-source modes run by default: the chosen cloud, unless the user chose this PC. */
+  get provider(): "runpod" | "vast" | "local" {
+    return this.settings.provider === "local" ? "local" : this.cloud;
+  }
+  /** GPU price per hour (USD) from the favourite card, used for Vast estimates. */
+  get dph(): number {
+    return parseFloat(this.settings.dph_estimate ?? "") || 0;
+  }
+  /** RunPod needs both the API key and the endpoint id (and RunPod must be the chosen cloud). */
   get runpodReady(): boolean {
-    return !!this.secrets[this.rpKeyName] && !!(this.settings[this.rpEndpointName] ?? "").trim();
+    return this.cloud === "runpod" && !!this.secrets[this.rpKeyName] && !!(this.settings[this.rpEndpointName] ?? "").trim();
   }
   /** Which of the two RunPod instances is in use (1 or 2), and the names of its key and endpoint-id settings. */
   get rpSlot(): 1 | 2 {
@@ -65,7 +73,10 @@ class Store {
   }
   /** Typical price of one result in USD (0 = free, it runs on this PC). */
   estimate(id: string, provider: string = this.provider): number {
-    return this.effective(id, provider)?.meta.est_usd ?? 0;
+    const w = this.effective(id, provider);
+    if (!w) return 0;
+    if (w.meta.provider) return w.meta.est_usd ?? 0;
+    return provider === "vast" && this.dph > 0 ? (w.meta.est_sec * this.dph) / 3600 : 0;
   }
 
   // RunPod status for the header chip and the RunPod panels; refreshed every 20 s and after every wake / sleep
@@ -124,8 +135,9 @@ class Store {
       this.rpTimer = setInterval(() => this.refreshRunpod(), 20000);
     }
     // first run: the setup wizard. People who already use RunPod skip it.
-    if (!this.ready && !b.settings.setup_done && !this.secrets.runpod_api_key) this.wizard = true;
-    else if (!this.ready && !this.secrets.runpod_api_key && b.settings.provider !== "local") this.page = "settings";
+    const hasCloudKey = !!this.secrets.runpod_api_key || !!this.secrets.vast_api_key;
+    if (!this.ready && !b.settings.setup_done && !hasCloudKey) this.wizard = true;
+    else if (!this.ready && !hasCloudKey && b.settings.provider !== "local") this.page = "settings";
     this.ready = true;
     this.refreshRunpod();
   }

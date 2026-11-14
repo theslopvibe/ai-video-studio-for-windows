@@ -19,9 +19,9 @@
   let ok = $state("");
   let folder = $state("");
   let key = $state("");
-  let cprov = $state<"runpod" | "fal" | "replicate">("runpod");
+  let cprov = $state<"vast" | "runpod" | "fal" | "replicate">(S.cloud);
   let endpointId = $state(S.settings.runpod_endpoint_id ?? "");
-  const secretOf = $derived(cprov === "runpod" ? "runpod_api_key" : cprov === "fal" ? "fal_key" : "replicate_token");
+  const secretOf = $derived(cprov === "vast" ? "vast_api_key" : cprov === "runpod" ? "runpod_api_key" : cprov === "fal" ? "fal_key" : "replicate_token");
   let picked = $state<string[]>([]);
   let prompt = $state(t("f_sample"));
 
@@ -83,8 +83,15 @@
     if (cprov === "runpod") await S.set("runpod_endpoint_id", endpointId.trim());
     S.secrets = await api.setSecret(secretOf, key.trim());
     key = "";
-    await api.hostedTest(cprov);
-    ok = t("key_ok");
+    if (cprov === "vast") {
+      // the key itself must work; a missing serverless endpoint is not a problem (the app rents its own cards)
+      const r = await api.testVast();
+      ok = r.ok ? t("key_ok") : r.message;
+    } else {
+      await api.hostedTest(cprov);
+      ok = t("key_ok");
+    }
+    if (cprov === "vast" || cprov === "runpod") await S.set("cloud_provider", cprov);
     S.refreshRunpod();
   });
 
@@ -97,11 +104,12 @@
   async function go(n: number) { err = ""; ok = ""; prog = null; step = n; }
 
   async function finish(generate: boolean) {
-    await S.set("provider", where === "cloud" ? "runpod" : "local");
+    if (where === "cloud" && (cprov === "vast" || cprov === "runpod")) await S.set("cloud_provider", cprov);
+    await S.set("provider", where === "cloud" ? (cprov === "vast" ? "vast" : "runpod") : "local");
     await S.set("setup_done", "1");
     S.wizard = false;
     if (generate) {
-      const wf = S.workflows.filter((w) => w.meta.kind === "t2v" && (needPc ? !w.meta.provider : w.meta.provider === cprov)).sort((a, b) => (a.meta.priority ?? 100) - (b.meta.priority ?? 100));
+      const wf = S.workflows.filter((w) => w.meta.kind === "t2v" && (needPc || cprov === "vast" ? !w.meta.provider : w.meta.provider === cprov)).sort((a, b) => (a.meta.priority ?? 100) - (b.meta.priority ?? 100));
       const pack = picked[0];
       const w = (needPc && pack ? wf.find((x) => x.meta.pack === pack) : undefined) ?? wf[0];
       if (w) {
@@ -198,9 +206,9 @@
       {#if needCloud}
         <h1 style={needPc ? "margin-top:28px" : ""}>{t("inst_cloud")}</h1>
         <div class="field"><label for="prov">{t("provider")}</label>
-          <select id="prov" bind:value={cprov} onchange={() => { ok = ""; err = ""; }}><option value="runpod">RunPod (cloud GPU, pay per second)</option><option value="fal">fal.ai (pay per result)</option><option value="replicate">Replicate (pay per result)</option></select>
+          <select id="prov" bind:value={cprov} onchange={() => { ok = ""; err = ""; }}><option value="vast">Vast.ai (rent a GPU)</option><option value="runpod">RunPod (cloud GPU, pay per second)</option><option value="fal">fal.ai (pay per result)</option><option value="replicate">Replicate (pay per result)</option></select>
         </div>
-        <p class="dim">{t(cprov === "runpod" ? "rp_how" : cprov === "fal" ? "fal_how" : "rep_how")}</p>
+        <p class="dim">{t(cprov === "vast" ? "vast_how" : cprov === "runpod" ? "rp_how" : cprov === "fal" ? "fal_how" : "rep_how")}</p>
         <div class="row"><input type="password" bind:value={key} placeholder={t("api_key")} />{#if cprov !== "runpod"}<button class="primary" disabled={busy || !key.trim()} onclick={saveKey}>{t("save_test")}</button>{/if}</div>
         {#if cprov === "runpod"}
           <div class="row"><input bind:value={endpointId} placeholder={t("endpoint_id")} autocomplete="off" /><button class="primary" disabled={busy || !key.trim() || !endpointId.trim()} onclick={saveKey}>{t("save_test")}</button></div>

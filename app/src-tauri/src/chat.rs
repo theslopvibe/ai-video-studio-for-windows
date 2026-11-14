@@ -467,12 +467,15 @@ fn plain(s: &str) -> String {
 pub fn studio_system(st: &AppState) -> String {
     let (wfs, _) = st.load_workflows();
     let mut cat = String::new();
+    let cloud = crate::cloud_provider(st);
     for w in wfs.iter() {
         let m = &w.meta;
+        // the other cloud's modes are not offered: only the cloud chosen in Settings works
+        if m.provider == "runpod" && cloud != "runpod" { continue; }
         let keys: Vec<&str> = m.inputs.iter().map(|i| i.key.as_str()).filter(|k| !matches!(*k, "prompt" | "negative" | "seed") && !k.starts_with("image") && !k.starts_with("audio") && !k.starts_with("video")).collect();
         let needs: Vec<String> = m.inputs.iter().filter(|i| matches!(i.ty.as_str(), "image" | "audio" | "video")).map(|i| format!("{}:{}", i.key, i.ty)).collect();
         let langs = if m.languages.is_empty() { String::new() } else { format!(" | languages: {}", m.languages.join(", ")) };
-        let cost = if m.provider.is_empty() { format!("open source on the user's PC, ~{}s, free", m.est_sec) } else if m.provider == "runpod" { format!("RunPod cloud GPU (wakes up by itself), ~${:.2} per result", m.est_usd) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
+        let cost = if m.provider.is_empty() && cloud == "vast" { format!("open source, runs on the user's PC or a rented Vast card, ~{}s", m.est_sec) } else if m.provider.is_empty() { format!("open source on the user's PC, ~{}s, free", m.est_sec) } else if m.provider == "runpod" { format!("RunPod cloud GPU (wakes up by itself), ~${:.2} per result", m.est_usd) } else { format!("paid API, ~${:.2} per result", m.est_usd) };
         cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {} | inputs: {}{}
 ", plain(&m.id), plain(&m.name_en), plain(&m.kind), cost, plain(&m.good_en), plain(&keys.join(",")), if needs.is_empty() { "none".into() } else { plain(&needs.join(",")) }, plain(&langs)));
     }
@@ -487,7 +490,7 @@ The app shows the user a card with the price and a Generate button, so never say
 Default run mode: {}.
 Models (id | name | kind | cost | use | params):
 {}",
-        if st.db.kv_get("provider").as_deref() == Some("local") { "this PC (open-source modes)" } else { "RunPod cloud (the RunPod modes)" },
+        if st.db.kv_get("provider").as_deref() == Some("local") { "this PC (open-source modes)" } else if cloud == "vast" { "Vast cloud card (the open-source modes on a rented card)" } else { "RunPod cloud (the RunPod modes)" },
         cat
     )
 }

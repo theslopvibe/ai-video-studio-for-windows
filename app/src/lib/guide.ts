@@ -13,6 +13,25 @@ export const GUIDE: Section[] = [
     ], note: "The first video after sleep takes 1-3 minutes while RunPod wakes up and a worker starts. Later ones are fast. On RunPod the models are already on the endpoint's network volume." },
   },
   {
+    id: "vast", icon: "V",
+    el: { t: "Vast.ai (ενοικιαζόμενη κάρτα): ρύθμιση και προβλήματα", steps: [
+      "Ρυθμίσεις → κουτί «Ποιο cloud χρησιμοποιείς;» → διάλεξε Vast.ai.",
+      "Ρυθμίσεις → επικόλλησε το Vast.ai API key (cloud.vast.ai → Account → API Keys) και πάτα «Αποθήκευση».",
+      "GPU & Κόστος → διάλεξε κάρτα (π.χ. RTX 4090) και πάτα «Εφαρμογή».",
+      "Μοντέλα → «Ξεκίνα κάρτα». Την πρώτη φορά κατεβαίνουν τα μοντέλα (περίπου 15-25 λεπτά). Όταν γράψει «Έτοιμη», φτιάξε video. Αν δεν ξεκινήσεις κάρτα, ξεκινά μόνη της με το πρώτο video.",
+      "Η κάρτα χρεώνεται όσο υπάρχει, ακόμα κι όταν δεν φτιάχνει video. Όταν τελειώσεις πάτα «Διαγραφή κάρτας». Κλείνει και μόνη της μετά από λίγα λεπτά αδράνειας.",
+      "Κολλάει στην εκκίνηση πάνω από 25 λεπτά: Μοντέλα → «Διαγραφή κάρτας» και ξανά «Ξεκίνα κάρτα» (θα πάρει άλλο μηχάνημα).",
+    ], note: "Μπορείς να έχεις και δεύτερη κάρτα ταυτόχρονα (Μοντέλα → «Κάρτες ταυτόχρονα»). Αυτές οι οδηγίες ισχύουν μόνο όταν το cloud είναι το Vast." },
+    en: { t: "Vast.ai (rented card): setup and problems", steps: [
+      "Settings → “Which cloud do you use?” box → pick Vast.ai.",
+      "Settings → paste your Vast.ai API key (cloud.vast.ai → Account → API Keys) and press “Save”.",
+      "GPU & Cost → pick a card (e.g. RTX 4090) and press “Apply”.",
+      "Models → “Start card”. The first time the models download (about 15-25 minutes). When it says “Ready”, make videos. If you do not start a card, one starts by itself with the first video.",
+      "The card is billed while it exists, even when it is not making a video. When you are done press “Delete card”. It also closes by itself after a few idle minutes.",
+      "Stuck starting for over 25 minutes: Models → “Delete card”, then “Start card” again (it will get another machine).",
+    ], note: "You can run a second card at the same time (Models → “Cards at the same time”). These steps apply only when the cloud is Vast." },
+  },
+  {
     id: "t2v", icon: "2",
     el: { t: "Φτιάξε video από κείμενο", steps: [
       "Δημιουργία → καρτέλα «Κείμενο → Video».",

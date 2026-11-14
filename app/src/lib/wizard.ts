@@ -65,6 +65,10 @@ export const W = {
   p_models: { en: "Downloading models", el: "Κατεβάζω μοντέλα" },
   inst_cloud: { en: "Connect a cloud GPU provider", el: "Σύνδεση με πάροχο cloud GPU" },
   provider: { en: "Provider", el: "Πάροχος" },
+  vast_how: {
+    en: "1. Create a free account at vast.ai. 2. Add a few dollars of credit under Billing. 3. Open Account → API Keys, create a key and paste it here.",
+    el: "1. Φτιάξε δωρεάν λογαριασμό στο vast.ai. 2. Βάλε λίγα δολάρια credit στο Billing. 3. Άνοιξε Account → API Keys, φτιάξε ένα κλειδί και επικόλλησέ το εδώ.",
+  },
   rp_how: {
     en: "1. Create an account at runpod.io and add a few dollars of credit under Billing. 2. Open Settings → API Keys, create a key with Serverless read and write access and paste it here. 3. Open Serverless, click your endpoint and copy its id (the short code under its name) into the second box. The app wakes the endpoint up when you send a video and puts it back to sleep afterwards, so you pay only for the seconds a video is being made.",
     el: "1. Φτιάξε λογαριασμό στο runpod.io και βάλε λίγα δολάρια credit στο Billing. 2. Άνοιξε Settings → API Keys, φτιάξε ένα κλειδί με πρόσβαση Serverless ανάγνωση και εγγραφή και επικόλλησέ το εδώ. 3. Άνοιξε το Serverless, πάτα το endpoint σου και αντίγραψε το id του (ο σύντομος κωδικός κάτω από το όνομα) στο δεύτερο κουτί. Το πρόγραμμα ξυπνά το endpoint όταν στέλνεις video και το βάζει για ύπνο μετά, οπότε πληρώνεις μόνο τα δευτερόλεπτα που φτιάχνεται το video.",

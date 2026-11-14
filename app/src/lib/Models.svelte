@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, type HfHit, type HfRepo, type SetupProgress } from "./api";
   import Stars from "./Stars.svelte";
-  import { open as pickDialog } from "@tauri-apps/plugin-dialog";
+  import { open as pickDialog, ask as askDialog } from "@tauri-apps/plugin-dialog";
   import { S } from "./store.svelte";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -56,7 +56,7 @@
     if (r) {
       S.boot!.models = r;
       sel = [...sel, "hf-" + repo.id.toLowerCase().replace("/", "--")];
-      S.notify(S.t("hf_added"));
+      S.notify(S.cloud === "vast" ? S.t("hf_added_v") : S.t("hf_added"));
       adding = false; repo = null; hits = null; q = "";
     }
   }
@@ -79,10 +79,50 @@
   const toggle = (id: string) => { sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]; S.set("models_selected", sel.join(",")); };
   const kind = (k: string) => (k === "video" ? "video" : k === "image" ? (S.lang === "el" ? "εικόνα" : "image") : k);
 
-  // Models are only downloaded to THIS PC. On RunPod they already live on the endpoint's network volume.
+  // Vast: install the selected models on the rented cards, start / close cards (the "My card" box)
+  let script = $state("");
+  let vbusy = $state(false);
+  let note = $state<{ ok: boolean; text: string } | null>(null);
+  async function preview() { const r = await S.run(() => api.installOnWorkers(sel, false)); if (r) script = r.script; }
+  async function install() {
+    vbusy = true; note = null;
+    try { const r = await api.installOnWorkers(sel, true); script = r.script; note = { ok: true, text: r.message }; }
+    catch (e) { note = { ok: false, text: String(e) }; }
+    vbusy = false;
+  }
+  let warm = $state<{ state: string; text: string; secs: number } | null>(null);
+  type Card = { id: number; gpu: string; status: string; usd_per_hour: number; minutes: number; cost_so_far: number };
+  let cards = $state<Card[] | null>(null);
+  let vastErr = $state("");
+  async function refreshCards() {
+    if (S.cloud !== "vast" || !S.secrets.vast_api_key) { cards = []; return; }
+    try { cards = await api.vastInstances(); vastErr = ""; } catch (e) { vastErr = String(e); }
+  }
+  async function closeCard(id: number) {
+    if (!(await askDialog(S.t("vast_confirm"), { kind: "warning" }))) return;
+    try { S.notify(await api.vastDestroy(id)); } catch (e) { vastErr = String(e); }
+    await refreshCards();
+  }
+  async function prepare(image = false) {
+    if (!(await askDialog(S.t("warm_confirm"), { kind: "warning" }))) return;
+    setTimeout(refreshCards, 3000);
+    warm = { state: "working", text: "", secs: 0 };
+    try { await api.warmUp(image, !!cards?.length); } catch (e) { warm = { state: "error", text: String(e), secs: 0 }; }
+  }
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  async function copy() { await navigator.clipboard.writeText(script); S.notify(S.t("copied")); }
+
+  // Models are downloaded to THIS PC here. On RunPod they already live on the endpoint's network volume.
   onMount(() => {
+    refreshCards();
+    const timer = setInterval(refreshCards, 10000);
     const un = listen<SetupProgress>("setup-progress", (e) => (prog = e.payload));
-    return () => { un.then((f) => f()); };
+    const un2 = listen<{ state: string; text: string; secs: number }>("warmup", (e) => {
+      warm = e.payload;
+      if (e.payload.state !== "working") refreshCards();
+      if (e.payload.state === "ready") S.notify(S.t("warm_ready"));
+    });
+    return () => { clearInterval(timer); un.then((f) => f()); un2.then((f) => f()); };
   });
   async function downloadLocal() {
     busy = true; dlErr = ""; prog = null;
@@ -97,22 +137,71 @@
 
 <div class="page">
   <h1>{S.t("models_title")}</h1>
-  <p class="dim">{S.t("models_intro")}</p>
+  <p class="dim">{S.cloud === "vast" ? S.t("models_intro_v") : S.t("models_intro")}</p>
 
+  {#if S.cloud === "vast"}
+  <div class="card">
+    <h2>{S.t("card_title")}</h2>
+    {#if cards === null}<p class="dim small">…</p>
+    {:else if !cards.length && warm?.state !== "working"}
+      <p><b>{S.t("card_off")}</b></p>
+    {:else if warm?.state === "working" || cards.some((c) => c.status !== "running")}
+      <p><b>⏳ {S.t("card_starting")}</b> {#if warm?.state === "working"}{mmss(warm.secs)}{/if}</p>
+      <p class="small dim">{S.t("card_starting_help")}</p>
+    {:else}
+      <p><b class="ok-text">✔ {S.t("card_ready")}</b></p>
+    {/if}
+    {#each cards ?? [] as c}
+      <div class="row small" style="padding:2px 0">
+        <div class="grow"><b>{c.gpu}</b> <span class="pill {c.status === 'running' ? 'ok' : 'warn'}">{c.status}</span> · {Math.round(c.minutes)} min · ${c.cost_so_far.toFixed(2)} · ${c.usd_per_hour.toFixed(2)}/h
+          {#if c.status === "loading" && c.minutes > 10}<div>{S.t("vast_stuck")}</div>{/if}</div>
+      </div>
+    {/each}
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <button class="primary" onclick={() => prepare(false)} disabled={warm?.state === "working"}>{cards?.length ? S.t("card_start_more") : S.t("card_start")}</button>
+      <button onclick={() => prepare(true)} disabled={warm?.state === "working"}>{S.t("card_start_img")}</button>
+      <button onclick={() => closeCard(0)} disabled={!cards?.length && warm?.state !== "working"}>{S.t("card_delete")}</button>
+    </div>
+    <div class="small dim" style="margin-top:8px">{S.t("card_fav")}: <b>{(S.settings.gpu_selection ?? "").split(",").filter(Boolean).join(", ") || S.t("card_fav_auto")}</b> · <button class="ghost small" onclick={() => (S.page = "gpu")}>{S.t("card_change")}</button></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_models")}</span>
+      <select value={S.settings.card_models ?? "both"} onchange={(e) => S.set("card_models", e.currentTarget.value)} style="width:auto">
+        <option value="auto">{S.t("card_models_auto")}</option><option value="both">{S.t("card_models_both")}</option><option value="wan">{S.t("card_models_wan")}</option><option value="flux">{S.t("card_models_flux")}</option>
+      </select></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_max")}</span>
+      <select value={S.settings.card_max ?? "2"} onchange={(e) => S.set("card_max", e.currentTarget.value)} style="width:auto">
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+      </select></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("image_card")}</span>
+      <select value={S.settings.image_card ?? "on"} onchange={(e) => S.set("image_card", e.currentTarget.value)} style="width:auto">
+        <option value="on">{S.t("image_card_on")}</option><option value="off">{S.t("image_card_off")}</option>
+      </select></div>
+    <div class="row small" style="margin-top:6px"><span class="dim">{S.t("card_auto")}</span>
+      <select value={S.settings.auto_close_min ?? "10"} onchange={(e) => S.set("auto_close_min", e.currentTarget.value)} style="width:auto">
+        <option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="0">{S.t("card_never")}</option>
+      </select></div>
+    <p class="small dim" style="margin-top:6px">{S.t("card_note")}</p>
+    {#if warm?.state === "ready"}<div class="msg ok"><b>{S.t("warm_ready")}</b></div>{/if}
+    {#if warm?.state === "error"}<div class="msg err">{warm.text}</div>{/if}
+    {#if vastErr}<div class="msg err">{vastErr}</div>{/if}
+  </div>
+
+  {:else}
   <div class="card">
     <h2>{ct(S.lang, "rp_title")}</h2>
     <RunpodPanel />
     <p class="small dim" style="margin-top:8px">{ct(S.lang, "rp_models_note")}</p>
   </div>
+  {/if}
 
   <div class="card">
     <table>
       <tbody>
         {#each packs as p}
           <tr>
-            <td style="width:30px"><input type="checkbox" checked={sel.includes(p.id)} onchange={() => toggle(p.id)} /></td>
+            <td style="width:30px"><input type="checkbox" disabled={S.cloud === "vast" && p.in_template} checked={(S.cloud === "vast" && p.in_template) || sel.includes(p.id)} onchange={() => toggle(p.id)} /></td>
             <td>
               <b>{p.name}</b> <span class="pill">{kind(p.kind)}</span> <span class="pill">{p.license}</span>
+              {#if S.cloud === "vast" && p.in_template}<span class="pill ok">{S.t("in_template")}</span>{/if}
               {#if p.insight}<span class="small"> · {S.t("found_quality")} <Stars n={p.insight.quality} /> · {S.t("found_speed")} <Stars n={p.insight.speed} /></span>{/if}
               {#if p.custom}<span class="pill">{S.t("custom_tag")}</span> <button class="ghost small" onclick={() => removeModel(p.id)}>{S.t("remove")}</button>{/if}
               <div class="small dim">{S.lang === "el" ? p.desc_el : p.desc_en}</div>
@@ -131,6 +220,18 @@
       <div class="small dim">{prog.step} · {prog.pct}% · {prog.detail}</div>
     {/if}
     {#if dlErr}<div class="msg err">{dlErr}</div>{/if}
+    {#if S.cloud === "vast"}
+      <div class="row" style="margin-top:10px">
+        <div class="grow small dim">{S.t("install_help")}</div>
+        <button onclick={preview}>{S.t("install_preview")}</button>
+        <button class="primary" onclick={install} disabled={vbusy}>{vbusy ? S.t("installing") : S.t("install_workers")}</button>
+      </div>
+      {#if note}<div class="msg {note.ok ? 'ok' : 'err'}">{note.text}</div>{/if}
+      {#if script}
+        <pre>{script}</pre>
+        <button onclick={copy}>{S.t("copy")}</button>
+      {/if}
+    {/if}
   </div>
 
   <div class="card">
@@ -139,7 +240,7 @@
       <button onclick={() => (adding = !adding)}>{adding ? "▾" : "▸"} {S.t("add_model")}</button>
     </div>
     {#if adding}
-      <p class="small dim">{S.t("add_model_help")}</p>
+      <p class="small dim">{S.cloud === "vast" ? S.t("add_model_help_v") : S.t("add_model_help")}</p>
       <div class="row">
         <input class="grow" placeholder={S.t("hf_ph")} bind:value={q} onkeydown={(e) => e.key === "Enter" && lookup()} />
         <button class="primary" onclick={() => lookup()} disabled={looking}>{looking ? "…" : S.t("hf_search")}</button>

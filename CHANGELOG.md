@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.7
+
+- **Vast.ai is back, next to RunPod.** Settings has "Which cloud do you use?": Vast.ai (rented cards) or RunPod. Only the cloud you pick works: its panel, tools and modes are shown and used, the other one stays idle and hidden (its keys stay saved). This covers videos from the app and from Claude / GLM (the other cloud's MCP tools answer with a clear message). Existing installs keep RunPod if a RunPod key is saved, otherwise Vast if a Vast key is saved. The Vast side is the one from 0.8.1 (cards, GPU and cost tab, speed test, watchdog, several cards). MCP package 0.6.0 (the `.mcpb` has the Vast tools again).
+
 ## 0.9.6
 
 - **Video to video.** New mode "Video → New video from your clip (Wan 2.2 restyle)" in the Video tools: give a clip and a prompt, and it changes the look while keeping the motion (a Change slider: 1 big, 3 subtle). Runs on your own PC with a strong GPU; not available on RunPod yet (the RunPod worker cannot take a video input). Untested on a real ComfyUI so far.

@@ -1,4 +1,5 @@
 mod anthropic;
+mod card;
 mod api;
 mod chat;
 mod hf;
@@ -9,9 +10,11 @@ mod editor;
 mod llm;
 mod local;
 mod mcp;
+mod provision;
 mod queue;
 mod runpod;
 mod secrets;
+mod vast;
 mod workflows;
 
 use db::{Db, Job, Project};
@@ -25,6 +28,7 @@ use tauri::{AppHandle, Manager, State};
 
 pub struct AppState {
     pub db: Db,
+    pub vast: vast::Vast,
     pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub local: local::Local,
     pub data_dir: PathBuf,
@@ -74,6 +78,30 @@ fn e(x: impl std::fmt::Display) -> String {
     x.to_string()
 }
 
+/// Which cloud does the work when "cloud" is chosen: "vast" or "runpod" (setting `cloud_provider`). Without a saved choice:
+/// RunPod when a RunPod key or endpoint is saved, else Vast when a Vast key is saved, else RunPod. The result is saved.
+pub fn cloud_provider(st: &AppState) -> &'static str {
+    let saved = st.db.kv_get("cloud_provider");
+    if let Some(v) = pick_cloud(saved.as_deref(), true, true) {
+        if matches!(saved.as_deref().map(str::trim), Some("vast" | "runpod")) {
+            return v;
+        }
+    }
+    let runpod = secrets::get("runpod_api_key").is_some() || secrets::get("runpod_api_key_2").is_some() || st.db.kv_get("runpod_endpoint_id").is_some_and(|s| !s.trim().is_empty());
+    let v = pick_cloud(None, runpod, secrets::get("vast_api_key").is_some()).unwrap_or("runpod");
+    let _ = st.db.kv_set("cloud_provider", v);
+    v
+}
+
+/// The saved choice if it is "vast" or "runpod"; otherwise RunPod when RunPod is set up, else Vast when only Vast is set up.
+fn pick_cloud(saved: Option<&str>, has_runpod: bool, has_vast: bool) -> Option<&'static str> {
+    match saved.map(str::trim) {
+        Some("vast") => Some("vast"),
+        Some("runpod") => Some("runpod"),
+        _ => Some(if !has_runpod && has_vast { "vast" } else { "runpod" }),
+    }
+}
+
 /// Bundled catalog (models.json) plus the user's custom packs added from HuggingFace.
 pub fn catalog(st: &AppState) -> Vec<Value> {
     let mut cat: Vec<Value> = serde_json::from_str(include_str!("../models.json")).unwrap_or_default();
@@ -83,8 +111,8 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 }
 
 const SETTING_KEYS: &[&str] = &[
-    "lang", "out_dir", "anthropic_model", "last_project",
-    "last_workflow", "models_selected", "enhance_provider", "claude_model", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled",
+    "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project", "cloud_provider",
+    "last_workflow", "models_selected", "enhance_provider", "claude_model", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "delivery", "worker_pack", "auto_close_min", "card_models", "card_max", "image_card",
     "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_name_1", "runpod_name_2", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
 ];
 
@@ -108,10 +136,11 @@ fn bootstrap(st: State<AppState>) -> R<Bootstrap> {
     let (wf, errs) = st.load_workflows();
     let dir = workflows::user_dir(&st.data_dir);
     let _ = std::fs::create_dir_all(&dir);
-    let settings = SETTING_KEYS
+    let mut settings: BTreeMap<String, String> = SETTING_KEYS
         .iter()
         .filter_map(|k| st.db.kv_get(k).map(|v| (k.to_string(), v)))
         .collect();
+    settings.insert("cloud_provider".into(), cloud_provider(&st).into());
     Ok(Bootstrap {
         projects: st.projects()?,
         secrets: secrets::status(),
@@ -342,6 +371,7 @@ fn job_enqueue(
     let suffix = st.db.projects().map_err(e)?.into_iter().find(|x| x.id == project_id).map(|x| x.suffix).unwrap_or_default();
     let prompt = if suffix.trim().is_empty() { prompt.trim().to_string() } else { format!("{}, {}", prompt.trim().trim_end_matches(','), suffix.trim()) };
     p.insert("prompt".into(), json!(prompt));
+    let gpu = p.get("gpu").and_then(|v| v.as_str()).filter(|g| !g.is_empty()).map(String::from).unwrap_or_else(|| st.db.kv_get("gpu_selection").unwrap_or_default());
     let j = Job {
         id: job_id,
         project_id,
@@ -356,7 +386,7 @@ fn job_enqueue(
         started_at: 0,
         finished_at: 0,
         est_cost: 0.0,
-        gpu: String::new(),
+        gpu,
     };
     st.db.insert_job(&j).map_err(e)?;
     queue::emit(&app, &j.id);
@@ -461,12 +491,307 @@ async fn test_llm(st: State<'_, AppState>) -> R<String> {
 
 // ---- connection tests
 
+#[derive(Serialize)]
+struct VastTest {
+    ok: bool,
+    message: String,
+    endpoint: Option<vast::EndpointInfo>,
+    all_endpoints: Vec<String>,
+}
+
+#[tauri::command]
+async fn test_vast(st: State<'_, AppState>) -> R<VastTest> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let name = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    let list = st.vast.endpoints(&key).await?;
+    let all: Vec<String> = list.iter().map(|x| x.name.clone()).collect();
+    match list.into_iter().find(|x| x.name == name) {
+        Some(ep) => {
+            let msg = if ep.scales_to_zero {
+                "Connection OK. The endpoint scales to zero when you are not using it.".to_string()
+            } else {
+                format!(
+                    "Connection OK, BUT the endpoint keeps workers warm (cold_workers={}, min_load={}) and may charge you when idle. Press \"Apply scale-to-zero\".",
+                    ep.cold_workers, ep.min_load
+                )
+            };
+            Ok(VastTest { ok: true, message: msg, endpoint: Some(ep), all_endpoints: all })
+        }
+        None => Ok(VastTest {
+            ok: false,
+            message: format!("The key works, but no endpoint named \"{name}\" was found. Available: {}", all.join(", ")),
+            endpoint: None,
+            all_endpoints: all,
+        }),
+    }
+}
+
 #[tauri::command]
 async fn test_anthropic(st: State<'_, AppState>) -> R<String> {
     let key = secrets::get("anthropic_api_key").ok_or("The Anthropic API key is missing.")?;
     let model = st.db.kv_get("anthropic_model").unwrap_or_else(|| anthropic::MODELS[0].into());
     anthropic::test(&key, &model).await?;
     Ok(format!("Connection OK ({model})"))
+}
+
+// ---- Vast: scale to zero, cards, models on workers
+
+#[tauri::command]
+async fn apply_scale_to_zero(st: State<'_, AppState>) -> R<String> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let name = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    let ep = st.vast.endpoints(&key).await?.into_iter().find(|x| x.name == name).ok_or("Endpoint not found")?;
+    st.vast.scale_to_zero(&key, ep.id).await?;
+    Ok("cold_workers=0, min_load=0 applied.".into())
+}
+
+// ---- GPU
+
+#[tauri::command]
+async fn gpu_offers(st: State<'_, AppState>, min_vram: f64) -> R<Vec<vast::GpuOffer>> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    st.vast.gpu_offers(&key, min_vram).await
+}
+
+/// Points the endpoint's workergroup at the given GPU models. `persist` also stores them as the global choice.
+pub async fn apply_gpu_filter(st: &AppState, gpus: &[String], min_vram: f64, dph: f64, persist: bool) -> R<String> {
+    // The choice is saved first, so it is not lost when Vast has no endpoint yet; it is pushed to Vast before the next job.
+    if persist {
+        st.db.kv_set("gpu_selection", &gpus.join(",")).map_err(e)?;
+        st.db.kv_set("dph_estimate", &dph.to_string()).map_err(e)?;
+    }
+    let soft = |m: &str| -> R<String> {
+        if persist { Ok(format!("Saved. {m} It will be applied on Vast once that is done (Settings → Create endpoint).")) } else { Err(m.to_string()) }
+    };
+    let Some(key) = secrets::get("vast_api_key") else { return soft("The Vast API key is missing.") };
+    let name = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    let Some(ep) = st.vast.endpoints(&key).await?.into_iter().find(|x| x.name == name) else {
+        return soft("No endpoint found on Vast.");
+    };
+    let Some((wg, sp)) = st.vast.workergroup(&key, ep.id, &name).await? else {
+        return soft("No workergroup found for the endpoint.");
+    };
+    let merged = vast::merge_gpu_filter(&sp, gpus);
+    st.vast.set_search_params(&key, ep.id, wg, &merged, min_vram).await?;
+    st.db.kv_set("gpu_applied", &gpus.join(",")).map_err(e)?;
+    Ok(format!("search_params = {merged}"))
+}
+
+#[tauri::command]
+async fn apply_gpus(st: State<'_, AppState>, gpus: Vec<String>, min_vram: f64, dph: f64) -> R<String> {
+    apply_gpu_filter(&st, &gpus, min_vram, dph, true).await
+}
+
+// ---- models / worker install
+
+#[derive(Serialize)]
+struct InstallResult {
+    script: String,
+    download_gb: f64,
+    applied: bool,
+    message: String,
+}
+
+#[tauri::command]
+async fn vast_instances(st: State<'_, AppState>) -> R<Vec<vast::InstanceInfo>> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    st.vast.instances(&key).await
+}
+
+/// Destroys one rented card (`id`), or all of them when `id` is 0. Also sets the endpoint to scale to zero.
+#[tauri::command]
+async fn vast_destroy(st: State<'_, AppState>, id: i64) -> R<String> {
+    stop_vast(&st, id).await
+}
+
+pub async fn stop_vast(st: &AppState, id: i64) -> R<String> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    WARM_CANCEL.store(true, Ordering::SeqCst);
+    // cancel waiting jobs too, otherwise Vast starts a new card for them right after this one closes
+    for f in st.cancels.lock().unwrap().values() { f.store(true, Ordering::Relaxed); }
+    let list = st.vast.instances(&key).await?;
+    // only this app's own cards (workers of its endpoint); other cards on the account are never touched
+    let ours = |i: &vast::InstanceInfo| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL;
+    let mut n = 0;
+    for i in list.iter().filter(|i| ours(i) && (id == 0 || i.id == id)) {
+        st.vast.destroy_instance(&key, i.id).await?;
+        log::info(&format!("vast: destroyed instance {} ({})", i.id, i.gpu));
+        n += 1;
+    }
+    if id != 0 && n == 0 { return Err("That card is not one of this app's workers, so it was not touched.".into()); }
+    Ok(format!("{n} card(s) closed."))
+}
+
+static WARM_CANCEL: AtomicBool = AtomicBool::new(false);
+static WARM_RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[derive(Serialize, Clone)]
+struct WarmEvent { state: String, text: String, secs: u64 }
+
+/// "Start card": asks Vast for a worker without sending a job, so the models download now and the first video starts at once.
+/// The worker only reports ready after its start-up script (the model downloads) has finished. Costs GPU time while it waits.
+#[tauri::command]
+async fn warm_up(app: AppHandle, image: Option<bool>, extra: Option<bool>) -> R<()> {
+    run_warm_with(&app, None, None, image.unwrap_or(false), extra.unwrap_or(false)).await
+}
+
+pub fn warm_state() -> &'static str {
+    if WARM_RUNNING.load(Ordering::SeqCst) > 0 { "preparing" } else { "idle" }
+}
+
+pub async fn run_warm(app: &AppHandle) -> R<()> {
+    run_warm_with(app, None, None, false, false).await
+}
+
+/// `workflow`: the mode whose models the card should hold; `gpu`: exact Vast GPU name. Both default to the saved choices.
+pub async fn run_warm_with(app: &AppHandle, workflow: Option<String>, gpu: Option<String>, image: bool, extra: bool) -> R<()> {
+    use tauri::Emitter;
+    let st = app.state::<AppState>();
+    if WARM_RUNNING.fetch_add(1, Ordering::SeqCst) == 0 { WARM_CANCEL.store(false, Ordering::SeqCst); }
+    let res = async {
+        let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+        if st.db.kv_get("vast_mode").as_deref() != Some("serverless") {
+            // a card of our own: GPU from the selection (default RTX 4090), models of the last used mode (default Wan 2.2 image→video)
+            let gpu = gpu.clone().unwrap_or_default();
+            let (wfs, _) = st.load_workflows();
+            let chosen = workflow.clone().or_else(|| if image { None } else { st.db.kv_get("last_workflow") }).and_then(|id| wfs.iter().find(|w| w.meta.id == id).map(|w| (w.meta.pack.clone(), matches!(w.meta.kind.as_str(), "t2i" | "i2i")))).filter(|(p, _)| !p.is_empty());
+            let image = image || chosen.as_ref().is_some_and(|c| c.1);
+            let pack = chosen.map(|c| c.0).unwrap_or_else(|| if image { "flux3-klein".into() } else { "wan22-i2v".into() });
+            let cancel = AtomicBool::new(false);
+            let (a2, t0) = (app.clone(), std::time::Instant::now());
+            let say = move |m: &str| { let _ = a2.emit("warmup", WarmEvent { state: "working".into(), text: m.into(), secs: t0.elapsed().as_secs() }); };
+            let packs = [pack];
+            let fut = card::ensure(&st, &gpu, &packs, card::Want { image, extra, job: false }, &cancel, &say);
+            tokio::pin!(fut);
+            loop {
+                tokio::select! {
+                    r = &mut fut => { let c = r?; card::notify_ready(app, &c); return Ok(true); }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
+                        if WARM_CANCEL.load(Ordering::SeqCst) { cancel.store(true, Ordering::SeqCst); }
+                    }
+                }
+            }
+        }
+        let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+        let want: Vec<String> = st.db.kv_get("gpu_selection").unwrap_or_default().split(',').filter(|x| !x.is_empty()).map(String::from).collect();
+        if !want.is_empty() && st.db.kv_get("gpu_applied").unwrap_or_default() != want.join(",") {
+            apply_gpu_filter(&st, &want, 24.0, 0.0, false).await?;
+        }
+        let t0 = std::time::Instant::now();
+        let (mut idx, mut attempt) = (0i64, 0u32);
+        log::info("warm_up: start");
+        loop {
+            if WARM_CANCEL.load(Ordering::SeqCst) { return Ok::<bool, String>(false); }
+            if t0.elapsed() > std::time::Duration::from_secs(30 * 60) {
+                return Err("No card became ready within 30 minutes. Check the card choice, then try again.".into());
+            }
+            match st.vast.route(&key, &endpoint, idx).await? {
+                vast::Route::Ready { .. } => return Ok(true),
+                vast::Route::Waiting { request_idx, status } => {
+                    idx = request_idx;
+                    let _ = app.emit("warmup", WarmEvent { state: "working".into(), text: status, secs: t0.elapsed().as_secs() });
+                    attempt += 1;
+                    tokio::time::sleep(std::time::Duration::from_secs_f32((1.5 * attempt as f32).min(6.0))).await;
+                }
+            }
+        }
+    }
+    .await;
+    WARM_RUNNING.fetch_sub(1, Ordering::SeqCst);
+    match res {
+        Ok(true) => { log::info("warm_up: ready"); let _ = app.emit("warmup", WarmEvent { state: "ready".into(), text: String::new(), secs: 0 }); Ok(()) }
+        Ok(false) => { let _ = app.emit("warmup", WarmEvent { state: "cancelled".into(), text: String::new(), secs: 0 }); Ok(()) }
+        Err(e) => { log::info(&format!("warm_up: failed: {e}")); let _ = app.emit("warmup", WarmEvent { state: "error".into(), text: e.clone(), secs: 0 }); Err(e) }
+    }
+}
+
+/// Safety net: closes the app's cards when nothing has been happening for `auto_close_min` minutes (default 10, 0 = never).
+pub async fn auto_close_loop(app: AppHandle) {
+    let mut last_active = std::time::Instant::now();
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let st = app.state::<AppState>();
+        let busy = WARM_RUNNING.load(Ordering::SeqCst) > 0
+            || st.db.jobs(None).map(|j| j.iter().any(|j| matches!(j.status.as_str(), "queued" | "routing" | "generating" | "downloading"))).unwrap_or(false);
+        if busy { last_active = std::time::Instant::now(); continue; }
+        let limit: u64 = st.db.kv_get("auto_close_min").and_then(|v| v.parse().ok()).unwrap_or(10);
+        if limit == 0 || last_active.elapsed() < std::time::Duration::from_secs(limit * 60) { continue; }
+        let Some(key) = secrets::get("vast_api_key") else { continue };
+        let endpoint = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+        if let Ok(list) = st.vast.instances(&key).await {
+            if list.iter().any(|i| i.label.starts_with(&format!("{endpoint}:")) || i.label == card::LABEL) {
+                log::info(&format!("auto-close: nothing happened for {limit} min, closing the card(s)"));
+                if let Ok(m) = stop_vast(&st, 0).await {
+                    use tauri::Emitter;
+                    let _ = app.emit("card-auto-closed", m);
+                }
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn warm_cancel() { WARM_CANCEL.store(true, Ordering::SeqCst); }
+
+/// Builds the worker install script (selected models + their custom nodes + the local-save node).
+/// With `apply`, it is written into a new private copy of the Vast template and the workergroup is pointed at it.
+#[tauri::command]
+async fn install_on_workers(st: State<'_, AppState>, ids: Vec<String>, apply: bool) -> R<InstallResult> {
+    let packs: Vec<Value> = catalog(&st)
+        .into_iter()
+        .filter(|m| ids.iter().any(|i| Some(i.as_str()) == m["id"].as_str()) && m["in_template"] != true)
+        .collect();
+    let gb: f64 = packs.iter().map(|m| m["size_gb"].as_f64().unwrap_or(0.0)).sum();
+    let script = provision::build_script(&packs, true);
+    st.db.kv_set("models_selected", &ids.join(",")).map_err(e)?;
+    if !apply {
+        return Ok(InstallResult { script, download_gb: gb, applied: false, message: String::new() });
+    }
+
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let name = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    let ep = st.vast.endpoints(&key).await?.into_iter().find(|x| x.name == name).ok_or("Endpoint not found")?;
+    let wg = st.vast.workergroup_json(&key, ep.id, &name).await?.ok_or("No workergroup found for the endpoint")?;
+    let wg_id = wg["id"].as_i64().ok_or("workergroup without an id")?;
+    let hash = wg["template_hash"].as_str().ok_or("The workergroup has no template_hash")?.to_string();
+    let t = st.vast.template_by_hash(&key, &hash).await?;
+
+    let onstart = provision::patch_onstart(t["onstart"].as_str().unwrap_or(""), &provision::block(&script));
+    let mut body = serde_json::Map::new();
+    for (to, from) in [
+        ("image", "image"), ("tag", "tag"), ("href", "href"), ("repo", "repo"), ("env", "env"),
+        ("jup_direct", "jup_direct"), ("ssh_direct", "ssh_direct"), ("use_jupyter_lab", "use_jupyter_lab"),
+        ("runtype", "runtype"), ("use_ssh", "use_ssh"), ("jupyter_dir", "jupyter_dir"),
+        ("docker_login_repo", "docker_login_repo"), ("extra_filters", "extra_filters"),
+        ("readme", "readme"), ("readme_visible", "readme_visible"), ("desc", "desc"),
+    ] {
+        let mut v = t.get(from).cloned().unwrap_or(Value::Null);
+        // Vast returns extra_filters as a JSON string but wants an object when a template is created.
+        if from == "extra_filters" {
+            if let Value::String(s) = &v {
+                v = serde_json::from_str::<Value>(s).ok().filter(|x| x.is_object()).unwrap_or_else(|| json!({}));
+            }
+        }
+        body.insert(to.into(), v);
+    }
+    let base_name = t["name"].as_str().unwrap_or("ComfyUI Wan 2.2").trim_start_matches("AIVS ").to_string();
+    let disk = t["recommended_disk_space"].as_f64().unwrap_or(100.0).max(100.0 + gb);
+    body.insert("name".into(), json!(format!("AIVS {base_name}")));
+    body.insert("onstart".into(), json!(onstart));
+    body.insert("recommended_disk_space".into(), json!(disk));
+    body.insert("private".into(), json!(true));
+    let new_hash = st.vast.create_template(&key, Value::Object(body)).await?;
+    st.vast.set_template_hash(&key, ep.id, wg_id, &new_hash).await?;
+    // linking a template resets the workergroup filters (card choice); make the next job or "Prepare now" push them again
+    st.db.kv_set("gpu_applied", "").map_err(e)?;
+    st.db.kv_set("worker_pack", &new_hash).map_err(e)?;
+    Ok(InstallResult {
+        script,
+        download_gb: gb,
+        applied: true,
+        message: format!("Created a private template \"AIVS {base_name}\" ({new_hash}) and linked it to the endpoint. It applies to new workers; warm ones keep the old setup until they scale down."),
+    })
 }
 
 // ---- RunPod: wake up / put to sleep / status (the buttons that used to start and stop rented cards)
@@ -543,6 +868,39 @@ fn workflow_import(st: State<AppState>, path: String) -> R<(Vec<workflows::Workf
     std::fs::create_dir_all(&dir).map_err(e)?;
     std::fs::copy(&src, dir.join(src.file_name().ok_or("Invalid file")?)).map_err(e)?;
     Ok(st.load_workflows())
+}
+
+// ---- first-time Vast setup
+
+/// Creates the scale-to-zero endpoint + workergroup from Vast's official Wan 2.2 template (only what is missing).
+#[tauri::command]
+async fn setup_endpoint(st: State<'_, AppState>, gpus: Vec<String>) -> R<String> {
+    let key = secrets::get("vast_api_key").ok_or("The Vast API key is missing.")?;
+    let name = st.db.kv_get("endpoint_name").unwrap_or_else(|| "comfyui-json".into());
+    log::info(&format!("setup_endpoint: start (endpoint {name}, gpus {gpus:?})"));
+    let mut done: Vec<String> = vec![];
+    let mut ep = st.vast.endpoints(&key).await?.into_iter().find(|x| x.name == name);
+    if ep.is_none() {
+        st.vast.create_endpoint(&key, &name).await?;
+        done.push(format!("created the endpoint \"{name}\""));
+        ep = st.vast.endpoints(&key).await?.into_iter().find(|x| x.name == name);
+    }
+    let ep = ep.ok_or("The endpoint was created but has not shown up on Vast yet. Try again in a moment.")?;
+    if st.vast.workergroup_json(&key, ep.id, &name).await?.is_none() {
+        let hash = st.vast.official_template(&key).await?;
+        let base = "verified=true rentable=true rented=false num_gpus=1";
+        let sp = if gpus.is_empty() { base.to_string() } else { vast::merge_gpu_filter(base, &gpus) };
+        st.vast.create_workergroup(&key, ep.id, &name, &hash, &sp, 24.0).await?;
+        st.db.kv_set("worker_pack", &hash).map_err(e)?;
+        done.push(format!("created a workergroup with the official template ({hash})"));
+    }
+    if !gpus.is_empty() {
+        st.db.kv_set("gpu_selection", &gpus.join(",")).map_err(e)?;
+        st.db.kv_set("gpu_applied", &gpus.join(",")).map_err(e)?;
+    }
+    let msg = if done.is_empty() { "Everything was already set up on Vast.".to_string() } else { format!("Done: {}.", done.join(" and ")) };
+    log::info(&format!("setup_endpoint: {msg}"));
+    Ok(msg)
 }
 
 // ---- logs
@@ -929,6 +1287,7 @@ pub fn run() {
             chat::init(&db).map_err(|x| x.to_string())?;
             app.manage(AppState {
                 db,
+                vast: vast::Vast::new(),
                 cancels: Mutex::new(HashMap::new()),
                 local: local::Local::default(),
                 data_dir,
@@ -939,6 +1298,8 @@ pub fn run() {
             app.state::<AppState>().sync_asset_scope(&h);
             tauri::async_runtime::spawn(queue::run_loop(h.clone()));
             tauri::async_runtime::spawn(runpod::auto_sleep_loop(h.clone()));
+            tauri::async_runtime::spawn(auto_close_loop(h.clone()));
+            tauri::async_runtime::spawn(card::watchdog(h.clone()));
             // The local API (Claude Desktop extension) is OFF unless the user turns it on in Settings: nothing listens, no token file exists.
             if app.state::<AppState>().db.kv_get("api_enabled").as_deref() == Some("1") {
                 api::set_enabled(&h, true);
@@ -962,7 +1323,8 @@ pub fn run() {
             bootstrap, reload_workflows, setting_set, secret_set,
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
-            enhance_prompt, test_llm, test_anthropic, runpod_status, runpod_wake, runpod_sleep,
+            enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
+            gpu_offers, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, runpod_status, runpod_wake, runpod_sleep,
             connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
@@ -982,6 +1344,15 @@ pub fn run() {
 #[cfg(test)]
 mod media_tests {
     use super::*;
+
+    #[test]
+    fn cloud_choice_defaults_and_saved_value() {
+        assert_eq!(pick_cloud(Some("vast"), true, true), Some("vast"));
+        assert_eq!(pick_cloud(Some("runpod"), false, true), Some("runpod"));
+        assert_eq!(pick_cloud(None, false, true), Some("vast"));
+        assert_eq!(pick_cloud(None, true, true), Some("runpod"));
+        assert_eq!(pick_cloud(Some(""), false, false), Some("runpod"));
+    }
 
     #[test]
     fn media_keys_cannot_carry_paths() {

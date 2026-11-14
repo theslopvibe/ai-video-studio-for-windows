@@ -31,7 +31,7 @@
       {/each}
     </div>
     <div class="small dim">{job.message}</div>
-    {#if job.status === "routing"}<div class="small dim">{S.t("cold_hint")}</div>{/if}
+    {#if job.status === "routing"}<div class="small dim">{S.cloud === "vast" ? S.t("cold_hint_v") : S.t("cold_hint")}</div>{/if}
   {:else}
     <div class="small"><span class="pill {job.status === 'failed' ? 'err' : ''}">{S.t(job.status === "failed" ? "st_failed" : "st_cancelled")}</span></div>
     {#if job.error}<div class="msg err">{job.error}</div>{/if}

@@ -5,7 +5,7 @@ const SERVICE: &str = "AIVideoStudio";
 
 /// Names the UI is allowed to store. Values never travel back to the UI.
 pub const NAMES: &[&str] = &[
-    // legacy: the app no longer uses Vast.ai; the name stays so an old saved key can still be read, replaced or cleared
+    // Vast.ai key (used when the cloud chosen in Settings is Vast)
     "vast_api_key",
     "anthropic_api_key",
     "gemini_api_key",

@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "ai-video-studio",
   "display_name": "AI Video Studio For Windows",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Φτιάξε AI video (Wan 2.2, LTX 2.5 και άλλα) μέσα από το chat του Claude, με το πρόγραμμα AI Video Studio For Windows.",
-  "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio For Windows που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο RunPod (ξυπνά και κοιμάται αυτόματα, πληρώνεις μόνο όσο φτιάχνεται το video), και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
+  "long_description": "Συνδέει το Claude Desktop με την εφαρμογή AI Video Studio For Windows που τρέχει στον υπολογιστή σου. Ζητάς video στο chat, το Claude το ετοιμάζει και το παράγει σε GPU στο Vast ή στο RunPod, όποιο διαλέξεις στην εφαρμογή (το RunPod ξυπνά και κοιμάται αυτόματα, πληρώνεις μόνο όσο φτιάχνεται το video), και σου δίνει το mp4 για μοντάζ. Η εφαρμογή πρέπει να είναι ανοιχτή.",
   "author": {
     "name": "AI Video Studio For Windows"
   },
@@ -40,12 +40,28 @@
       "description": "Βάλε το RunPod για ύπνο (σταματά κάθε χρέωση)"
     },
     {
+      "name": "list_gpus",
+      "description": "Vast: ποιες κάρτες υπάρχουν και πόσο κοστίζουν"
+    },
+    {
+      "name": "card_start",
+      "description": "Vast: ετοίμασε κάρτα από πριν (κοστίζει όσο τρέχει)"
+    },
+    {
+      "name": "vast_running",
+      "description": "Vast: ποιες κάρτες τρέχουν και πόσο κοστίζουν"
+    },
+    {
+      "name": "vast_stop",
+      "description": "Vast: κλείσε τις κάρτες (σταματά η χρέωση)"
+    },
+    {
       "name": "generate_video",
       "description": "Παραγωγή video, εικόνας, φωνής, εργαλείων και αλυσίδων (κοστίζει, ζητά επιβεβαίωση)"
     },
     {
       "name": "set_defaults",
-      "description": "Αλλαγή προεπιλεγμένου μοντέλου, πού τρέχει (RunPod ή PC) και αυτόματου ύπνου"
+      "description": "Αλλαγή προεπιλεγμένου μοντέλου, πού τρέχει (cloud ή PC) και αυτόματου ύπνου"
     },
     {
       "name": "get_job",

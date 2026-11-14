@@ -53,6 +53,8 @@
     }
   }
 
+  let vast = $state("");
+  let endpoint = $state(S.settings.endpoint_name ?? "comfyui-json");
   let rpKey = $state("");
   let rpRes = $state<{ ok: boolean; text: string } | null>(null);
   let anth = $state("");
@@ -70,6 +72,38 @@
     busy = "llm";
     try { res.llm = { ok: true, text: await api.testLlm() }; } catch (e) { res.llm = { ok: false, text: String(e) }; }
     busy = "";
+  }
+  // Vast: key, endpoint test (the app mostly rents its own cards, the endpoint is the older serverless way)
+  async function setupVast() {
+    const ok = await askDialog(S.t("setup_confirm"), { title: S.t("setup_btn"), kind: "warning" });
+    if (!ok) return;
+    busy = "vast";
+    try {
+      const gpus = (S.settings.gpu_selection ?? "").split(",").filter(Boolean);
+      const m = await api.setupEndpoint(gpus);
+      res.vast = { ok: true, text: m };
+    } catch (e) { res.vast = { ok: false, text: String(e) }; }
+    busy = "";
+    await testVast();
+  }
+  async function testVast() {
+    busy = "vast";
+    try {
+      await S.set("endpoint_name", endpoint.trim() || "comfyui-json");
+      const r = await api.testVast();
+      res.vast = { ok: r.ok, text: r.message };
+    } catch (e) { res.vast = { ok: false, text: String(e) }; }
+    busy = "";
+  }
+  async function zero() {
+    try { res.vast = { ok: true, text: await api.scaleToZero() }; await testVast(); }
+    catch (e) { res.vast = { ok: false, text: String(e) }; }
+  }
+  async function pickCloud(v: string) {
+    await S.set("cloud_provider", v);
+    if (v === "runpod") S.refreshRunpod();
+    else { S.rp = null; S.rpError = ""; if (S.page === "gpu") S.page = "settings"; }
+    if (S.page === "gpu" && v !== "vast") S.page = "settings";
   }
   // RunPod: "Save and test" saves the key, then asks RunPod's /health for the endpoint (key + endpoint id are checked together)
   async function testRunpod() {
@@ -124,13 +158,46 @@
     <h2>{S.t("default_provider")}</h2>
     <div class="row">
       <select value={S.provider} onchange={(e) => S.set("provider", e.currentTarget.value)} style="width:auto">
-        <option value="runpod">{S.t("run_cloud")}</option>
+        <option value={S.cloud}>{S.cloud === "vast" ? S.t("run_cloud_v") : S.t("run_cloud")}</option>
         <option value="local">{S.t("run_pc")}</option>
       </select>
       <button onclick={() => (S.wizard = true)}>{S.t("rerun_wizard")}</button>
     </div>
   </div>
 
+  <div class="card">
+    <h2>{S.t("cloud_title")}</h2>
+    <div class="col" style="gap:6px">
+      <label class="row"><input type="radio" name="cloud" checked={S.cloud === "vast"} onchange={() => pickCloud("vast")} /> {S.t("cloud_vast")}</label>
+      <label class="row"><input type="radio" name="cloud" checked={S.cloud === "runpod"} onchange={() => pickCloud("runpod")} /> {S.t("cloud_runpod")}</label>
+    </div>
+    <p class="small dim">{S.t("cloud_help")}</p>
+  </div>
+
+  {#if S.cloud === "vast"}
+  <div class="card">
+    <h2>Vast.ai</h2>
+    <div class="field">
+      <label for="vk">{S.t("vast_key")} <span class="pill {S.secrets.vast_api_key ? 'ok' : 'warn'}">{S.secrets.vast_api_key ? S.t("set") : S.t("not_set")}</span></label>
+      <div class="row">
+        <input id="vk" type="password" bind:value={vast} placeholder={S.secrets.vast_api_key ? "••••••••••••" : ""} autocomplete="off" />
+        <button onclick={async () => { await saveKey("vast_api_key", vast); vast = ""; }} disabled={!vast}>{S.t("save")}</button>
+      </div>
+      <div class="small dim">{S.t("vast_key_help")}</div>
+    </div>
+    <div class="field">
+      <label for="ep">{S.t("endpoint_name")}</label>
+      <div class="row">
+        <input id="ep" bind:value={endpoint} onchange={() => S.set("endpoint_name", endpoint.trim())} />
+        <button onclick={testVast} disabled={busy === "vast" || !S.secrets.vast_api_key}>{busy === "vast" ? S.t("testing") : S.t("test")}</button>
+        <button onclick={zero} disabled={!S.secrets.vast_api_key}>{S.t("scale_zero")}</button>
+      </div>
+      {#if res.vast}<div class="msg {res.vast.ok ? 'ok' : 'warn'}">{res.vast.text}</div>{/if}
+      {#if S.secrets.vast_api_key && res.vast && !res.vast.ok && res.vast.text.includes("endpoint")}<button onclick={setupVast} disabled={busy === "vast"}>{S.t("setup_btn")}</button>{/if}
+    </div>
+    <div class="msg">{S.t("r2_note")}</div>
+  </div>
+  {:else}
   <div class="card">
     <h2>{ct(S.lang, "rp_title")}</h2>
     <p class="small dim">{ct(S.lang, "rp_intro")}</p>
@@ -173,6 +240,7 @@
     {#if rpRes}<div class="msg {rpRes.ok ? 'ok' : 'err'}">{rpRes.text}</div>{/if}
     <RunpodPanel />
   </div>
+  {/if}
 
   <div class="card">
     <h2>{S.t("language")}</h2>
@@ -280,7 +348,7 @@
 
   <div class="card">
     <h2>{S.t("share_title")}</h2>
-    <p class="small dim">{S.t("share_note")}</p>
+    <p class="small dim">{S.cloud === "vast" ? S.t("share_note_v") : S.t("share_note")}</p>
     <div class="row"><button onclick={exp}>{S.t("export")}</button><button onclick={imp}>{S.t("import")}</button></div>
   </div>
 
@@ -326,7 +394,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.6" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.7" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

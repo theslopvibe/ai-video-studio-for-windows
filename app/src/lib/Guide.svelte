@@ -3,15 +3,15 @@
   import { GUIDE } from "./guide";
   import { loc } from "./translations";
 
-  let open = $state("start");
-  const go = (page: "generate" | "models" | "settings") => (S.page = page);
+  let open = $state(S.cloud === "vast" ? "vast" : "start");
+  const go = (page: "generate" | "models" | "settings" | "gpu") => (S.page = page);
 </script>
 
 <div class="page form">
   <h1>{S.t("nav_guide")}</h1>
   <p class="dim">{S.t("guide_intro")}</p>
 
-  {#each GUIDE as g}
+  {#each GUIDE.filter((g) => (g.id === "vast" ? S.cloud === "vast" : S.cloud === "runpod" || !["start", "cost", "help"].includes(g.id))) as g}
     {@const base = S.lang === "el" ? g.el : g.en}
     {@const c = S.lang === "el" || S.lang === "en" ? base : { t: loc(S.lang, `g.${g.id}.t`, base.t), steps: base.steps.map((s, i) => loc(S.lang, `g.${g.id}.s${i}`, s)), note: base.note ? loc(S.lang, `g.${g.id}.note`, base.note) : undefined }}
     <div class="card">
@@ -26,6 +26,7 @@
         <div class="row" style="margin-top:10px">
           {#if g.id === "start"}
             <button onclick={() => go("settings")}>{S.t("nav_settings")}</button>
+            {#if S.cloud === "vast"}<button onclick={() => go("gpu")}>{S.t("nav_gpu")}</button>{/if}
             <button onclick={() => go("models")}>{S.t("nav_models")}</button>
           {/if}
           {#if g.id === "t2v" || g.id === "i2v"}<button class="primary" onclick={() => go("generate")}>{S.t("nav_generate")}</button>{/if}

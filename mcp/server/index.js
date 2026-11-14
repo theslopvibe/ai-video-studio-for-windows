@@ -5,7 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const INSTRUCTIONS = `Model choice: list_workflows returns for each mode its license (open = free on the user's PC, paid = billed per result by a provider and needs an API key; RunPod modes are billed per second of GPU time), good_for (what it does best) and est_usd_per_result (typical USD price of one result). When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price in USD, and ask before using a paid one.
+const INSTRUCTIONS = `Which cloud: the user picks ONE cloud in the app (Settings → Which cloud): Vast (rented cards) or RunPod (serverless). video_studio_status shows it as cloud_provider. Only that cloud's tools and modes work; the other cloud's tools refuse with a message, so do not try to use them. If cloud_provider is "runpod" follow the RunPod paragraphs; if it is "vast" follow the Vast paragraph at the end (cards, gpu, vast_*), and ignore the RunPod ones. provider="cloud" or omitted means that cloud; provider="local" means the user's PC.
+Model choice: list_workflows returns for each mode its license (open = free on the user's PC, paid = billed per result by a provider and needs an API key; RunPod modes are billed per second of GPU time), good_for (what it does best) and est_usd_per_result (typical USD price of one result). When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price in USD, and ask before using a paid one.
 AI Video Studio For Windows generates AI video, pictures, voice and tools (open-source models such as Wan 2.2, LTX 2.5, FLUX, MiniMax H3) on a RunPod Serverless GPU endpoint (cloud, billed per second only while a job runs) or on the user's own PC, from the user's own desktop app. The app must be running on the user's PC.
 RunPod: there are no cards to rent and no models to install; the models already live on the endpoint's network volume. RunPod is either "asleep" (max workers 0: nothing can run, so nothing can bill) or "awake". generate_video wakes it up by itself, and the app puts it back to sleep after the queue has been empty for a few minutes (auto_sleep_min, default 5). The first video after sleep takes 1-3 minutes longer. Use runpod_status to show the state and the estimated USD spent this session (session_usd), runpod_wake to wake it in advance, and runpod_sleep (e.g. when the user says they are done) so that nothing can bill. (Ελληνικά: runpod_status = αν κοιμάται/ξυπνά και πόσα ξοδεύτηκαν, runpod_wake = ξύπνα το, runpod_sleep = βάλ' το για ύπνο.)
 Workflow:
@@ -16,7 +17,7 @@ Workflow:
 Prompts: write English, cinematic, concrete (subject, action, camera, lighting, style). For several clips of one story keep the same style words and character description in each prompt. For image-to-video give image_path (a local file) and describe only the motion.
 The user may name a model ("LTX", "Wan") in plain words. Pass it as workflow_id exactly as the user said; the app resolves it (when RunPod is the default place to run it picks the RunPod mode of that model). To change the app's permanent defaults ("use LTX from now on", "run on my PC", "sleep after 10 minutes") call set_defaults. A per-video workflow_id/provider overrides the defaults for that video only.
 Models: ltxv-t2v / ltxv-i2v are fastest and cheapest; wan22-* are higher quality and slower. For pictures set kind="image" (FLUX or SDXL). Modes named fal-* and replicate-* run on hosted APIs (pay per result, no GPU, need the provider key); the others run on RunPod (provider="runpod", the default) or on the user's PC (provider="local"). The app's default place to run is shown by video_studio_status. Use list_workflows to see the options and their parameters.
-More than video: list_workflows also has voice (kind tts: text to speech; vc: change a voice), picture tools (kind i2i: remove background, upscale, edit with words), smoother motion (v2v) and lip-sync (lipsync). Each entry lists its "inputs" (image/audio/video slots) and, for voices, its "languages": answer language questions from that list, never from memory. Chain steps with generate_video: set workflow_id to the tool and give "inputs" like {"image":"job:<id of the finished job>"} or {"audio":"C:\\\\path\\\\voice.wav"}. Typical chains: picture -> video (i2v), text -> voice (tts) -> lip-sync (video with a face + that voice), video -> v2v. Every step costs or takes time like a video, so confirm the whole plan once. Tools that exist only as open-source modes without a RunPod twin run on the user's PC. For voice cloning, voice change and lip-sync on a real person, first make sure the user confirms the voice/face is their own or they have permission; do not help impersonate someone or make people appear to say things they did not say. For "make me a video with Wan 2.2 from this picture" use workflow_id "wan22-i2v-lightning" with image_path; from text only use "wan22-t2v-lightning". When the user says they are finished, ask and call runpod_sleep so that nothing can bill (the app also does it by itself after a few idle minutes).`;
+More than video: list_workflows also has voice (kind tts: text to speech; vc: change a voice), picture tools (kind i2i: remove background, upscale, edit with words), smoother motion (v2v) and lip-sync (lipsync). Each entry lists its "inputs" (image/audio/video slots) and, for voices, its "languages": answer language questions from that list, never from memory. Chain steps with generate_video: set workflow_id to the tool and give "inputs" like {"image":"job:<id of the finished job>"} or {"audio":"C:\\\\path\\\\voice.wav"}. Typical chains: picture -> video (i2v), text -> voice (tts) -> lip-sync (video with a face + that voice), video -> v2v. Every step costs or takes time like a video, so confirm the whole plan once. Tools that exist only as open-source modes without a RunPod twin run on the user's PC. For voice cloning, voice change and lip-sync on a real person, first make sure the user confirms the voice/face is their own or they have permission; do not help impersonate someone or make people appear to say things they did not say. For "make me a video with Wan 2.2 from this picture" use workflow_id "wan22-i2v-lightning" with image_path; from text only use "wan22-t2v-lightning". When the user says they are finished, ask and call runpod_sleep so that nothing can bill (the app also does it by itself after a few idle minutes). VAST (only when cloud_provider is "vast"): Cloud cards: generate_video rents a card by itself (the GPU the user named, e.g. 4090) and installs the model on it. The FIRST video after a card is rented takes about 15-20 minutes (boot + download of about 38 GB of Wan 2.2); tell the user this and the price per hour (list_gpus) before starting. While the card stays up (it closes itself after about 10 idle minutes) each next video takes only 2-4 minutes, so for several videos send them all together. When the user says they are finished, ask and call vast_stop with all=true so billing stops. For "make me a video with Wan 2.2 from this picture" use workflow_id "wan22-i2v-lightning" with image_path; from text only use "wan22-t2v-lightning". To have a card ready before the first video use card_start with workflow_id and gpu. Readiness: the card is ready only when vast_running shows ready=true (progress says what it is doing). Status \"running\" alone only means the machine started; the models still download for 10-25 minutes. After card_start, check vast_running every minute or two and TELL the user as soon as ready becomes true (and give the elapsed time and cost so far). Several cards at once: the app runs jobs in parallel on separate cards, up to card_max (default 2, settable 1-4 with set_defaults card_max). If the user wants two or more videos at the same time, send all the generate_video calls together (the app rents a second card by itself, each takes 15-20 minutes the first time) or call card_start with new_card=true to prepare an extra card in advance; tell the user each card is billed separately. Pictures only: for text-to-picture jobs (kind image, FLUX) the app uses its own cheap FLUX-only card that starts much faster than a video card; to prepare one call card_start with kind="image" (set_defaults image_card=false puts pictures on the video card instead). vast_running lists every card with its own ready, in_use and kind (video or images): send work only to ready cards, a card with ready=false is still downloading. The app checks all cards every minute and closes by itself a card that stopped, stopped answering for 3 minutes, never became ready in 45 minutes, or is idle for the auto-close time (set_defaults auto_close_min 5/10/30/0), and shows a notification; tell the user if vast_running shows fewer cards than before.`;
 
 function apiInfo() {
   const base = process.env.AIVS_DATA_DIR || path.join(process.env.APPDATA || "", "com.aivideostudio.app");
@@ -65,6 +66,12 @@ const TOOLS = [
     run: () => call("GET", "/v1/workflows"),
   },
   {
+    name: "list_gpus",
+    description: "Cloud GPUs currently offered with their USD per hour (min and median). Use it to estimate cost.",
+    inputSchema: { type: "object", properties: { min_vram: { type: "number", description: "Minimum VRAM in GB" } } },
+    run: (a) => call("GET", `/v1/gpus?min_vram=${Number(a.min_vram) || 0}`),
+  },
+  {
     name: "runpod_status",
     description:
       "Show whether RunPod (the cloud GPU) is asleep, awake or working: state, workers_max (0 = asleep), jobs_waiting, session_usd (estimated USD spent by finished RunPod jobs since the app started), usd_per_hour_while_working and auto_sleep_min. Billing is per second only while a job runs; asleep means nothing can bill. Call it when the user asks what is running or what they are being charged. (Δείχνει αν το RunPod κοιμάται, είναι ξύπνιο ή δουλεύει και πόσα έχουν ξοδευτεί.)",
@@ -96,7 +103,8 @@ const TOOLS = [
         prompt: { type: "string", description: "English, cinematic, concrete description." },
         user_confirmed: { type: "boolean", description: "True only after the user explicitly agreed to the cost." },
         kind: { type: "string", enum: ["video", "image", "audio", "tts", "vc", "i2i", "v2v", "lipsync"], description: "image = still picture, audio = music, tts = speech, vc = voice change, i2i = picture tool, v2v = video tool, lipsync (default video)." },
-        provider: { type: "string", enum: ["local", "runpod"], description: "Where to run open-source modes: the user's PC or RunPod (cloud GPU). Omit for the app default (RunPod)." },
+        provider: { type: "string", enum: ["local", "cloud"], description: "Where to run open-source modes: \"local\" = the user's PC, \"cloud\" = the cloud picked in the app (Vast or RunPod). Omit for the app default." },
+        gpu: { type: "string", description: "Vast only: GPU in the user's words (\"4090\", \"RTX 3090 24GB\"); omit for the app's default. Ignored on RunPod." },
         image_path: { type: "string", description: "Local path of a start image (png/jpg) for image-to-video." },
         end_image_path: { type: "string", description: "Local path of an end image (needs a flf2v workflow)." },
         workflow_id: { type: "string", description: "Model in the user's words (\"ltx\", \"wan\") or an id from list_workflows. Omit for the app's default." },
@@ -120,16 +128,16 @@ const TOOLS = [
       for (const k of ["width", "height", "length", "fps", "seed", "negative"]) if (a[k] !== undefined) params[k] = a[k];
       return call("POST", "/v1/jobs", {
         prompt: a.prompt, kind: a.kind, provider: a.provider, image_path: a.image_path, end_image_path: a.end_image_path, workflow_id: a.workflow_id,
-        project: a.project, scene: a.scene, inputs: a.inputs, params,
+        gpu: a.gpu, project: a.project, scene: a.scene, inputs: a.inputs, params,
       });
     },
   },
   {
     name: "set_defaults",
     description:
-      "Change the app's defaults for all later videos (same as the settings in the app). model: free text like \"ltx\" or \"wan\". provider: \"runpod\" (cloud, default) or \"local\" (the user's PC). auto_sleep_min: minutes with an empty queue before RunPod goes to sleep (0 = never). runpod_instance: the app can hold two separate RunPod instances (for example two accounts with their own billing); give 1, 2 or the instance name to switch which one runs everything. video_studio_status and runpod_status show the one in use (runpod_instance_name) and the configured ones (instances). Never switch instance unless the user asks.",
-    inputSchema: { type: "object", properties: { model: { type: "string" }, provider: { type: "string", enum: ["runpod", "local"], description: "Default place to run open-source modes." }, auto_sleep_min: { type: "integer", description: "Put RunPod to sleep after the queue has been empty for this many minutes (0 = never)." }, runpod_instance: { type: "string", description: "Which RunPod instance to use: 1, 2 or its name." } } },
-    run: (a) => call("POST", "/v1/settings", { model: a.model, provider: a.provider, auto_sleep_min: a.auto_sleep_min, runpod_instance: a.runpod_instance }),
+      "Change the app's defaults for all later videos (same as the settings in the app). model: free text like \"ltx\" or \"wan\". provider: \"cloud\" (default; the cloud picked in the app) or \"local\" (the user's PC). Vast only: gpu, card_max, image_card, auto_close_min (as before). auto_sleep_min: minutes with an empty queue before RunPod goes to sleep (0 = never). runpod_instance: the app can hold two separate RunPod instances (for example two accounts with their own billing); give 1, 2 or the instance name to switch which one runs everything. video_studio_status and runpod_status show the one in use (runpod_instance_name) and the configured ones (instances). Never switch instance unless the user asks.",
+    inputSchema: { type: "object", properties: { model: { type: "string" }, provider: { type: "string", enum: ["cloud", "local"], description: "Default place to run open-source modes: cloud (the cloud picked in the app) or local (the PC)." }, gpu: { type: "string", description: "Vast only: default GPU (\"4090\"), or \"auto\"." }, card_max: { type: "integer", description: "Vast only: cards allowed at the same time (1-4, default 2)." }, image_card: { type: "boolean", description: "Vast only: true (default) = pictures get their own cheap FLUX-only card." }, auto_close_min: { type: "integer", description: "Vast only: close idle cards after 0/5/10/30 minutes." }, auto_sleep_min: { type: "integer", description: "Put RunPod to sleep after the queue has been empty for this many minutes (0 = never)." }, runpod_instance: { type: "string", description: "Which RunPod instance to use: 1, 2 or its name." } } },
+    run: (a) => call("POST", "/v1/settings", { model: a.model, provider: a.provider, auto_sleep_min: a.auto_sleep_min, runpod_instance: a.runpod_instance, gpu: a.gpu, card_max: a.card_max, image_card: a.image_card, auto_close_min: a.auto_close_min }),
   },
   {
     name: "get_job",
@@ -164,6 +172,30 @@ const TOOLS = [
     run: (a) => call("POST", `/v1/jobs/${encodeURIComponent(a.job_id)}/retry`, {}),
   },
   {
+    name: "card_start",
+    description: "Start a cloud card on Vast NOW and prepare it (the models download), without making a video yet. Costs money while it runs. Ask the user first, then set user_confirmed=true. Returns at once; poll vast_running until ready is true (status running alone is not enough), then call generate_video. You do not need it before generate_video (that starts a card itself), only to have the card ready in advance.",
+    inputSchema: { type: "object", required: ["user_confirmed"], properties: { user_confirmed: { type: "boolean" }, workflow_id: { type: "string" }, gpu: { type: "string" }, kind: { type: "string", enum: ["video", "image"], description: "image = cheap picture-only card (FLUX), video = card with Wan (default)." }, new_card: { type: "boolean", description: "true = rent one MORE card even if one is already up or starting (parallel cards, up to card_max)." } } },
+    run: async (a) => {
+      if (a.user_confirmed !== true) throw new Error("Ρώτα πρώτα τον χρήστη (η κάρτα κοστίζει όσο τρέχει) και ξανακάλεσε με user_confirmed=true.");
+      return call("POST", "/v1/card/start", { user_confirmed: true, workflow_id: a.workflow_id, gpu: a.gpu, kind: a.kind, new_card: a.new_card });
+    },
+  },
+  {
+    name: "vast_running",
+    description: "List the cloud cards currently rented on Vast (GPU, status, minutes running, cost so far, USD per hour). Every card listed is billed while it exists, even while loading. Call it when the user asks what is running or what they are being charged. Also returns ready (true only when the card can accept work) and progress text while it is not ready.",
+    inputSchema: { type: "object", properties: {} },
+    run: () => call("GET", "/v1/vast"),
+  },
+  {
+    name: "vast_stop",
+    description: "Close (destroy) a rented Vast card so billing stops: give id from vast_running, or all=true to close all of the app's cards. A job running on it will fail. Ask the user first, then set user_confirmed=true.",
+    inputSchema: { type: "object", required: ["user_confirmed"], properties: { id: { type: "integer" }, all: { type: "boolean", description: "Close all of the app's cards (use instead of id)." }, user_confirmed: { type: "boolean" } } },
+    run: async (a) => {
+      if (a.user_confirmed !== true) throw new Error("Ρώτα πρώτα τον χρήστη και ξανακάλεσε με user_confirmed=true.");
+      return call("POST", "/v1/vast/stop", { id: a.id, all: a.all === true, user_confirmed: true });
+    },
+  },
+  {
     name: "make_report",
     description: "Write a diagnostic report file (settings without secrets, recent jobs, log tail) and return its path. Use when something fails repeatedly.",
     inputSchema: { type: "object", properties: {} },
@@ -185,7 +217,7 @@ async function handle(msg) {
         result: {
           protocolVersion: params?.protocolVersion || "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "ai-video-studio", version: "0.4.0" },
+          serverInfo: { name: "ai-video-studio", version: "0.6.0" },
           instructions: INSTRUCTIONS,
         },
       });

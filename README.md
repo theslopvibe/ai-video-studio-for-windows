@@ -9,7 +9,7 @@ Developed by [theslopvibe.com](https://theslopvibe.com). Released under the MIT 
 ## What it does today
 
 - **Setup wizard.** Detects your graphics card, installs ComfyUI for you, picks models that fit your card, and makes a first video. No command line.
-- **Runs on this PC or in the cloud.** NVIDIA is the safest choice; AMD and Intel are supported experimentally. Cloud: RunPod Serverless (wakes up and sleeps by itself, billed per second only while a video is made) or fal.ai and Replicate (pay per result).
+- **Runs on this PC or in the cloud.** NVIDIA is the safest choice; AMD and Intel are supported experimentally. Cloud: you pick one in Settings, either Vast.ai (rented cards) or RunPod Serverless (wakes up and sleeps by itself, billed per second only while a video is made) or fal.ai and Replicate (pay per result).
 - **Text to video, image to video, start and end frame.** Wan 2.2 and LTX-Video workflows are bundled. Any ComfyUI workflow you export can be dropped in.
 - **Queue, library and projects.** Batch many prompts, keep clips in project folders, see the cost of each clip.
 - **Add models from Hugging Face.** Search or paste a link; the app works out the type, VRAM need and license.
@@ -51,7 +51,7 @@ Tests: `cd app/src-tauri && cargo test`, and `npx svelte-check` in `app/`.
 | Path | What |
 |---|---|
 | `app/src` | Svelte 5 interface (English first, Greek second) |
-| `app/src-tauri/src` | Rust backend: job queue, providers (`runpod.rs`, `hosted.rs`, `local.rs`), local API for Claude (`api.rs`) |
+| `app/src-tauri/src` | Rust backend: job queue, providers (`vast.rs` + `card.rs`, `runpod.rs`, `hosted.rs`, `local.rs`), local API for Claude (`api.rs`) |
 | `app/src-tauri/workflows` | Bundled ComfyUI workflows |
 | `mcp/` | Claude Desktop extension (MCP server) |
 | `vault/` | Longer design notes |

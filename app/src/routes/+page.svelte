@@ -6,6 +6,7 @@
   import Library from "$lib/Library.svelte";
   import Projects from "$lib/Projects.svelte";
   import RunpodChip from "$lib/RunpodChip.svelte";
+  import Gpu from "$lib/Gpu.svelte";
   import Models from "$lib/Models.svelte";
   import Settings from "$lib/Settings.svelte";
   import Guide from "$lib/Guide.svelte";
@@ -31,10 +32,12 @@
     { id: "library", page: "library", key: "nav_library", icon: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>' },
     { id: "settings", page: "settings", key: "nav_settings", icon: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' },
   ];
-  const SETTINGS_TABS: { page: Page; key: "nav_settings" | "nav_models" | "nav_projects" | "nav_guide" | "nav_logs" }[] = [
-    { page: "settings", key: "nav_settings" }, { page: "models", key: "nav_models" },
+  const SETTINGS_TABS: { page: Page; key: "nav_settings" | "nav_models" | "nav_gpu" | "nav_projects" | "nav_guide" | "nav_logs" }[] = [
+    { page: "settings", key: "nav_settings" }, { page: "models", key: "nav_models" }, { page: "gpu", key: "nav_gpu" },
     { page: "projects", key: "nav_projects" }, { page: "guide", key: "nav_guide" }, { page: "logs", key: "nav_logs" },
   ];
+  // the GPU & cost tab only exists for Vast (RunPod has no cards to choose)
+  const TABS = $derived(SETTINGS_TABS.filter((t) => t.page !== "gpu" || S.cloud === "vast"));
   const group = (p: Page): Rail =>
     p === "generate" ? "create" : p === "chat" ? "assistant" : p === "editor" ? "editor" : p === "library" || p === "queue" ? "library" : "settings";
   const inSettings = $derived(group(S.page) === "settings");
@@ -78,7 +81,7 @@
 
       {#if inSettings}
         <div class="tabs" role="tablist">
-          {#each SETTINGS_TABS as t}
+          {#each TABS as t}
             <button role="tab" aria-selected={S.page === t.page} class:on={S.page === t.page} onclick={() => (S.page = t.page)}>{S.t(t.key)}</button>
           {/each}
         </div>
@@ -93,6 +96,7 @@
             <Library embedded />
           </div>
         {:else if S.page === "projects"}<Projects />
+        {:else if S.page === "gpu" && S.cloud === "vast"}<Gpu />
         {:else if S.page === "models"}<Models />
         {:else if S.page === "guide"}<Guide />
         {:else if S.page === "editor"}<Editor />
