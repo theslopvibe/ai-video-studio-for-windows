@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.9
+
+- Security hardening. A result file is downloaded from the exact address that was checked, and every redirect is checked again. More private and reserved addresses are blocked. A settings file can no longer change the RunPod sleep time, spend cap or price. The uninstaller now also removes the saved RunPod keys when you choose to delete the data.
+
 ## 0.9.8
 
 - Security fixes for Vast. The Vast account key is no longer sent to the worker (the signed route data is enough), and a worker address must be https. A result file is downloaded only from a public https address (no localhost, private or link-local addresses, also after redirects). Importing a settings file can no longer change the endpoint name, GPU choice, cloud choice, card limits or RunPod instance; the app's own Vast machines are matched by exact label, and GPU names are checked before they go into a search.

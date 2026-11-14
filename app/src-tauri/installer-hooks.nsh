@@ -52,6 +52,8 @@ Var AIVS_C2
     nsExec::Exec 'cmdkey /delete:openrouter_api_key.AIVideoStudio'
     nsExec::Exec 'cmdkey /delete:fal_key.AIVideoStudio'
     nsExec::Exec 'cmdkey /delete:replicate_token.AIVideoStudio'
+    nsExec::Exec 'cmdkey /delete:runpod_api_key.AIVideoStudio'
+    nsExec::Exec 'cmdkey /delete:runpod_api_key_2.AIVideoStudio'
     Pop $0
   ${EndIf}
   ${If} $AIVS_DelMedia == "1"

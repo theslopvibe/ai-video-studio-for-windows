@@ -118,7 +118,7 @@ const SETTING_KEYS: &[&str] = &[
 
 /// Settings a shared settings file must never change: folders, hosts, and what decides which cloud is used and which
 /// rented machines the app treats as its own (a file from someone else must not point it at your other machines).
-const IMPORT_DENY: &[&str] = &["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled", "endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "card_models", "worker_pack", "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active"];
+const IMPORT_DENY: &[&str] = &["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled", "endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "card_models", "worker_pack", "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd", "runpod_gpu_dph", "delivery"];
 
 /// The prefix the app's own Vast serverless workers carry in their label: the saved endpoint name when it is a plain
 /// name (letters, digits, `_ -`, 3-40 chars), otherwise the default. Never empty, so it cannot match every machine.
@@ -1371,7 +1371,7 @@ mod label_tests {
     }
     #[test]
     fn import_never_changes_who_is_ours() {
-        for k in ["endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "out_dir"] { assert!(IMPORT_DENY.contains(&k)); }
+        for k in ["endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "out_dir", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd"] { assert!(IMPORT_DENY.contains(&k)); }
     }
 }
 

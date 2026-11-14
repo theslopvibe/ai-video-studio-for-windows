@@ -408,17 +408,26 @@ created: {}
 
 /// True for an address that is on the public internet (not loopback, private, link-local, unspecified, multicast, CGNAT).
 pub fn ip_is_public(ip: std::net::IpAddr) -> bool {
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr};
     match ip {
         IpAddr::V4(v) => {
             let o = v.octets();
             !(v.is_loopback() || v.is_private() || v.is_link_local() || v.is_unspecified() || v.is_multicast() || v.is_broadcast()
-                || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0)
+                || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0) || (o[0] == 192 && o[1] == 0 && o[2] == 2)
+                || (o[0] == 198 && (o[1] == 18 || o[1] == 19)) || (o[0] == 198 && o[1] == 51 && o[2] == 100)
+                || (o[0] == 203 && o[1] == 0 && o[2] == 113) || o[0] >= 240)
         }
         IpAddr::V6(v) => {
             if let Some(m) = v.to_ipv4_mapped() { return ip_is_public(IpAddr::V4(m)); }
             let s = v.segments();
-            !(v.is_loopback() || v.is_unspecified() || v.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80)
+            if v.is_loopback() || v.is_unspecified() || v.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80 { return false; }
+            // forms that embed an IPv4 address (NAT64, IPv4-compatible, 6to4) must have a public one inside; documentation range is never public
+            let embedded = |hi: u16, lo: u16| ip_is_public(IpAddr::V4(Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8)));
+            if s[0] == 0x0064 && s[1] == 0xff9b && s[2..6].iter().all(|x| *x == 0) { return embedded(s[6], s[7]); }
+            if s[..6].iter().all(|x| *x == 0) { return embedded(s[6], s[7]); }
+            if s[0] == 0x2002 { return embedded(s[1], s[2]); }
+            !(s[0] == 0x2001 && s[1] == 0x0db8)
         }
     }
 }
@@ -435,30 +444,40 @@ pub fn host_literal_ok(u: &reqwest::Url) -> bool {
 }
 
 /// A result URL comes from the worker, so it is checked before anything is fetched: https only, and every address
-/// its host resolves to must be public.
-pub async fn check_download_url(url: &str) -> Result<(), String> {
+/// its host resolves to must be public. Returns the host and the checked address so the connection can be pinned to it
+/// (a second lookup by the HTTP client could return something else).
+pub async fn check_download_url(url: &str) -> Result<(reqwest::Url, Option<(String, std::net::SocketAddr)>), String> {
     let u = reqwest::Url::parse(url).map_err(|_| "The worker returned a result address that is not valid.".to_string())?;
     if !host_literal_ok(&u) { return Err("The worker returned a result address that is not a public https address, so it was not downloaded.".into()); }
+    let mut pin = None;
     if let Some(url::Host::Domain(d)) = u.host() {
-        let addrs = tokio::net::lookup_host((d, u.port_or_known_default().unwrap_or(443))).await.map_err(|e| format!("Could not look up the result host: {e}"))?;
-        for a in addrs {
-            if !ip_is_public(a.ip()) { return Err("The result address points to a private or local address, so it was not downloaded.".into()); }
-        }
+        let addrs: Vec<_> = tokio::net::lookup_host((d, u.port_or_known_default().unwrap_or(443))).await.map_err(|e| format!("Could not look up the result host: {e}"))?.collect();
+        if addrs.is_empty() || addrs.iter().any(|a| !ip_is_public(a.ip())) { return Err("The result address points to a private or local address, so it was not downloaded.".into()); }
+        pin = Some((d.to_string(), addrs[0]));
     }
-    Ok(())
+    Ok((u, pin))
 }
 
 async fn download(app: &AppHandle, id: &str, url: &str, path: &std::path::Path, cancel: &AtomicBool) -> Result<(), String> {
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
-    check_download_url(url).await?;
-    // redirects are followed only to https hosts that are not local or private
-    let policy = reqwest::redirect::Policy::custom(|a| {
-        if a.previous().len() >= 5 { return a.error("too many redirects"); }
-        if host_literal_ok(a.url()) { a.follow() } else { a.error("redirect to a non-public address") }
-    });
-    let r = reqwest::Client::builder().redirect(policy).build().map_err(|e| e.to_string())?
-        .get(url).timeout(Duration::from_secs(600)).send().await.map_err(|e| e.to_string())?;
+    // redirects are followed by hand: every hop is checked again and the connection goes to the address that was checked
+    let mut target = url.to_string();
+    let mut hops = 0;
+    let r = loop {
+        let (u, pin) = check_download_url(&target).await?;
+        let mut cb = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
+        if let Some((host, addr)) = pin { cb = cb.resolve(&host, addr); }
+        let r = cb.build().map_err(|e| e.to_string())?.get(u.clone()).timeout(Duration::from_secs(600)).send().await.map_err(|e| e.to_string())?;
+        if r.status().is_redirection() {
+            hops += 1;
+            let loc = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).ok_or("The result address redirected nowhere.")?;
+            if hops > 5 { return Err("The result address redirected too many times.".into()); }
+            target = u.join(loc).map_err(|_| "The result address redirected to an invalid address.".to_string())?.to_string();
+            continue;
+        }
+        break r;
+    };
     if !r.status().is_success() {
         return Err(format!("Download failed: HTTP {}", r.status()));
     }
@@ -550,6 +569,13 @@ mod tests {
         assert!(!ok("https://[::ffff:127.0.0.1]/x"));
         assert!(!ok("https://user:pw@example.com/x"));
         assert!(!ok("https://printer.local/x"));
+        assert!(!ok("https://[64:ff9b::7f00:1]/x"));
+        assert!(!ok("https://[::7f00:1]/x"));
+        assert!(!ok("https://[2002:7f00:1::]/x"));
+        assert!(!ok("https://[2001:db8::1]/x"));
+        assert!(!ok("https://198.18.0.1/x"));
+        assert!(!ok("https://240.0.0.1/x"));
+        assert!(ok("https://[64:ff9b::101:101]/x"));
     }
     use super::*;
     #[test]

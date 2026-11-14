@@ -44,3 +44,14 @@ pub fn set(name: &str, value: &str) -> Result<()> {
 pub fn status() -> BTreeMap<String, bool> {
     NAMES.iter().map(|n| (n.to_string(), get(n).is_some())).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn uninstaller_deletes_every_stored_key() {
+        let hook = include_str!("../installer-hooks.nsh");
+        for n in super::NAMES {
+            assert!(hook.contains(&format!("cmdkey /delete:{n}.AIVideoStudio")), "installer-hooks.nsh does not delete {n}");
+        }
+    }
+}

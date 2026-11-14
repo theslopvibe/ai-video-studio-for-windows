@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.9.8"
+version = "0.9.9"
 description = "AI Video Studio For Windows"
 authors = ["AI Video Studio For Windows"]
 edition = "2021"
