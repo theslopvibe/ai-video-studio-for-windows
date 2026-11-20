@@ -135,4 +135,15 @@ export const api = {
   reveal: (path: string) => invoke<void>("reveal", { path }),
   exportSettings: (path: string) => invoke<void>("export_settings", { path }),
   importSettings: (path: string) => invoke<void>("import_settings", { path }),
+  profileExport: (path: string, name: string, voices: boolean, runpod: boolean, keys: boolean, password: string) => invoke<{ voices: number; runpod: number; keys: boolean }>("profile_export", { path, name, voices, runpod, keys, password }),
+  profilePreview: (path: string) => invoke<PackPreview>("profile_preview", { path }),
+  profileApply: (path: string, voices: boolean, runpod: boolean, keys: boolean, makeActive: boolean, password: string) => invoke<{ voices: number; runpod: number; keys: boolean }>("profile_apply", { path, voices, runpod, keys, makeActive, password }),
+};
+
+export type PackPreview = {
+  name: string;
+  voices: { name: string; seed: number | null; speed: number | null; instruct: string; replaces: boolean }[];
+  runpod: { slot: string; name: string; endpoint_id: string; current_endpoint: string }[];
+  active: string;
+  has_keys: boolean;
 };

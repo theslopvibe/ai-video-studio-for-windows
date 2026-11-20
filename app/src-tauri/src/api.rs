@@ -223,6 +223,9 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
             let (key, id) = runpod::creds(&st)?;
             Ok(json!({ "message": runpod::wake(&key, &id).await?, "note": "generate_video also wakes RunPod by itself when it is asleep; the first video can take a minute or two longer." }))
         }
+        ("GET", ["v1", "voices"]) => Ok(json!({ "voices": crate::voices::list(&st), "note": "Use a saved voice in generate_video with inputs {\"audio\":\"voice:<name>\"} on a clone workflow (chatterbox-clone)." })),
+        ("POST", ["v1", "voices"]) => crate::voices::save(&st, body["name"].as_str().unwrap_or(""), body["audio_path"].as_str().unwrap_or(""), body["consent_confirmed"] == json!(true), &body),
+        ("POST", ["v1", "voices", "delete"]) => crate::voices::delete(&st, body["name"].as_str().unwrap_or("")),
         ("POST", ["v1", "runpod", "sleep"]) => {
             need_cloud(&st, "runpod")?;
             let (key, id) = runpod::creds(&st)?;
@@ -298,6 +301,7 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
         }
         ("GET", ["v1", "jobs", id]) => st.db.job(id).map(|j| job_json(&j)).ok_or_else(|| "Job not found".to_string()),
         ("POST", ["v1", "jobs"]) => create_job(app, &st, &body).await,
+        ("POST", ["v1", "avatar"]) => avatar_video(app, &st, &body).await,
         ("POST", ["v1", "settings"]) => set_defaults(&st, &body).await,
         ("POST", ["v1", "jobs", id, "cancel"]) => {
             job_cancel(app.state(), app.clone(), id.to_string())?;
@@ -310,6 +314,35 @@ async fn route(app: &AppHandle, req: &Req) -> Result<Value, String> {
         ("POST", ["v1", "report"]) => Ok(json!({ "report": logs_report(app.state())? })),
         _ => Err(format!("Unknown route: {} {}", req.method, req.path)),
     }
+}
+
+/// "A video with <voice>, this picture, this script": the speech is made first (Voice Studio, on this PC, free), and the
+/// talking-avatar job waits for it (it reads the speech length from the finished file). Two jobs, one call.
+async fn avatar_video(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, String> {
+    if b["user_confirmed"] != json!(true) {
+        return Err("Ask the user first (the avatar runs on a rented GPU and costs money; tell them the quality and the length), then call again with user_confirmed=true.".into());
+    }
+    let script = b["script"].as_str().unwrap_or("").trim().to_string();
+    let voice = b["voice"].as_str().unwrap_or("").trim().to_string();
+    let image = b["image_path"].as_str().unwrap_or("").trim().to_string();
+    if script.is_empty() || voice.is_empty() || image.is_empty() {
+        return Err("avatar_video needs script (the words to say), voice (a saved voice name, see voice_list) and image_path (a photo of the person, face to the camera).".into());
+    }
+    crate::voices::get(st, &voice)?; // fail early, before anything is queued
+    let wf = if b["quality"].as_str().is_some_and(|q| q.starts_with("720")) { "avatar-infinitetalk-720" } else { "avatar-infinitetalk-480" };
+    let project = b["project"].as_str().unwrap_or("Claude");
+    let speech = create_job(app, st, &json!({
+        "prompt": script, "kind": "tts", "workflow_id": "voicestudio-tts", "provider": "local", "project": project,
+        "params": { "voice": voice },
+    })).await?;
+    let id = speech["id"].as_str().ok_or("The speech job was not created.")?.to_string();
+    let look = b["look"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or("A person talks to the camera, calm natural expression, small head movements.");
+    let video = create_job(app, st, &json!({
+        "prompt": look, "kind": "lipsync", "workflow_id": wf, "provider": "cloud", "project": project, "image_path": image,
+        "inputs": { "audio": format!("job:{id}") },
+    })).await?;
+    Ok(json!({ "speech_job": speech["id"], "video_job": video["id"], "workflow": wf, "runs_on": video["runs_on"],
+        "message": "Two jobs are queued: first the speech in the saved voice (on this PC), then the talking avatar, which starts when the speech is done. Follow both with list_jobs; the video is the second job." }))
 }
 
 async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, String> {
@@ -360,7 +393,10 @@ async fn create_job(app: &AppHandle, st: &AppState, b: &Value) -> Result<Value, 
             if !["image", "audio", "video"].iter().any(|p| k == p || k.starts_with(&format!("{p}_"))) {
                 return Err(format!("\"{k}\" is not a media input (use image, audio or video keys)."));
             }
-            let val = if v.starts_with("job:") { v.to_string() } else { crate::stash_input(st, std::path::Path::new(v), &uuid::Uuid::new_v4().simple().to_string())? };
+            let val = if v.starts_with("job:") { v.to_string() } else if let Some(name) = v.strip_prefix("voice:") {
+                if !k.starts_with("audio") { return Err("voice: can only be used in an audio input.".into()); }
+                crate::voices::resolve(st, name)?
+            } else { crate::stash_input(st, std::path::Path::new(v), &uuid::Uuid::new_v4().simple().to_string())? };
             params.insert(k.clone(), json!(val));
         }
     }

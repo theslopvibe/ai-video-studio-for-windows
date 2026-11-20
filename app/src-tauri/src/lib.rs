@@ -15,6 +15,9 @@ mod queue;
 mod runpod;
 mod secrets;
 mod vast;
+mod profile;
+mod voices;
+mod voicestudio;
 mod workflows;
 
 use db::{Db, Job, Project};
@@ -113,12 +116,12 @@ pub fn catalog(st: &AppState) -> Vec<Value> {
 const SETTING_KEYS: &[&str] = &[
     "lang", "endpoint_name", "out_dir", "anthropic_model", "dph_estimate", "gpu_selection", "last_project", "cloud_provider",
     "last_workflow", "models_selected", "enhance_provider", "claude_model", "gemini_model", "theme", "openai_base_url", "openai_model", "provider", "local_comfy_dir", "setup_done", "api_enabled", "delivery", "worker_pack", "auto_close_min", "card_models", "card_max", "image_card",
-    "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_name_1", "runpod_name_2", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
+    "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_tts_endpoint_id", "runpod_tts_endpoint_id_2", "runpod_active", "runpod_name_1", "runpod_name_2", "runpod_gpu_dph", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd",
 ];
 
 /// Settings a shared settings file must never change: folders, hosts, and what decides which cloud is used and which
 /// rented machines the app treats as its own (a file from someone else must not point it at your other machines).
-const IMPORT_DENY: &[&str] = &["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled", "endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "card_models", "worker_pack", "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_active", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd", "runpod_gpu_dph", "delivery"];
+const IMPORT_DENY: &[&str] = &["out_dir", "local_comfy_dir", "openai_base_url", "api_enabled", "endpoint_name", "gpu_selection", "cloud_provider", "card_max", "auto_close_min", "card_models", "worker_pack", "runpod_endpoint_id", "runpod_endpoint_id_2", "runpod_tts_endpoint_id", "runpod_tts_endpoint_id_2", "runpod_active", "runpod_sleep_min", "runpod_sleep_on_exit", "runpod_cap_usd", "runpod_gpu_dph", "delivery"];
 
 /// The prefix the app's own Vast serverless workers carry in their label: the saved endpoint name when it is a plain
 /// name (letters, digits, `_ -`, 3-40 chars), otherwise the default. Never empty, so it cannot match every machine.
@@ -1082,6 +1085,21 @@ fn import_settings(st: State<AppState>, path: String) -> R<()> {
     Ok(())
 }
 
+// ---- profile packs (voices + RunPod instances shared as one file; only reachable from the app window)
+
+#[tauri::command]
+fn profile_export(st: State<AppState>, path: String, name: String, voices: bool, runpod: bool, keys: bool, password: String) -> R<Value> {
+    profile::export(&st, &path, &profile::Export { name: &name, voices, runpod, keys, password: &password })
+}
+
+#[tauri::command]
+fn profile_preview(st: State<AppState>, path: String) -> R<Value> { profile::preview(&st, &path) }
+
+#[tauri::command]
+fn profile_apply(st: State<AppState>, path: String, voices: bool, runpod: bool, keys: bool, make_active: bool, password: String) -> R<Value> {
+    profile::apply(&st, &path, &profile::Apply { voices, runpod, keys, make_active, password: &password })
+}
+
 // ---- hosted providers and chat
 
 #[tauri::command]
@@ -1342,7 +1360,7 @@ pub fn run() {
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
             gpu_offers, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, runpod_status, runpod_wake, runpod_sleep,
-            connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings,
+            connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings, profile_export, profile_preview, profile_apply,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output

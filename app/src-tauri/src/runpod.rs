@@ -234,6 +234,11 @@ pub fn endpoint_setting(slot: u8) -> &'static str {
 }
 
 /// Display name of an instance (setting runpod_name_1 / runpod_name_2).
+/// The text-to-speech (Voice Studio) endpoint of an instance, empty when it has none.
+pub fn tts_endpoint(st: &AppState, slot: u8) -> String {
+    st.db.kv_get(if slot == 2 { "runpod_tts_endpoint_id_2" } else { "runpod_tts_endpoint_id" }).unwrap_or_default().trim().to_string()
+}
+
 pub fn slot_name(st: &AppState, slot: u8) -> String {
     st.db.kv_get(&format!("runpod_name_{slot}")).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| format!("Instance {slot}"))
 }

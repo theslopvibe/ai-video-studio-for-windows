@@ -52,6 +52,10 @@ pub struct Meta {
     /// Model pack (models.json id) this workflow needs installed on the workers.
     #[serde(default)]
     pub pack: String,
+    /// Talking-avatar modes: name of the input that holds the speech length in seconds; the graph (written for 81 frames) is then
+    /// extended with as many 72-frame chunks as that length needs (see extend_chunks).
+    #[serde(default)]
+    pub repeat_seconds: String,
     /// Lower comes first in the mode list (the first text mode is the default).
     #[serde(default = "prio")]
     pub priority: u32,
@@ -332,6 +336,10 @@ pub fn fill(wf: &Workflow, params: &Map<String, Value>) -> Value {
         .collect();
     let mut w = wf.workflow.clone();
     walk(&mut w, &values);
+    if !wf.meta.repeat_seconds.is_empty() {
+        let secs = typed_f64(params.get(&wf.meta.repeat_seconds)).unwrap_or(10.0);
+        extend_chunks(&mut w, secs);
+    }
 
     // Plain exports without placeholders: write the prompt into the positive text-encoder.
     let has_placeholders = wf.workflow.to_string().contains("{{prompt}}");
@@ -378,6 +386,38 @@ pub fn fill(wf: &Workflow, params: &Map<String, Value>) -> Value {
     w
 }
 
+fn typed_f64(v: Option<&Value>) -> Option<f64> {
+    match v? { Value::Number(n) => n.as_f64(), Value::String(s) => s.trim().parse().ok(), _ => None }
+}
+
+/// InfiniteTalk makes 81 frames (3.24 s at 25 fps) per pass; every further pass adds 72 new frames (it re-uses the last 9 as
+/// motion context). Chunk 1 is in the file; this clones talk/guide/sched/noise/samp/dec for chunks 2..n, drops the 9 repeated
+/// frames of each extension, joins everything and feeds the result to CreateVideo. n = enough chunks for `secs` (1..=60).
+pub fn extend_chunks(w: &mut Value, secs: f64) {
+    let frames = (secs.clamp(1.0, 180.0) * 25.0).ceil();
+    let n = if frames <= 81.0 { 1 } else { (((frames - 81.0) / 72.0).ceil() as usize + 1).min(60) };
+    let Some(obj) = w.as_object_mut() else { return };
+    let base = ["talk", "guide", "sched", "noise", "samp", "dec"];
+    if n < 2 || base.iter().any(|k| !obj.contains_key(*k)) { return; }
+    let seed = obj["noise"]["inputs"]["noise_seed"].as_i64();
+    let mut acc = "dec".to_string();
+    for i in 2..=n {
+        for k in base {
+            let mut t = obj[k].to_string();
+            // only references ["talk",1] are renamed, never a field that happens to be called "noise"
+            for b in base { t = t.replace(&format!("[\"{b}\","), &format!("[\"{b}_{i}\",")); }
+            let mut node: Value = serde_json::from_str(&t).unwrap();
+            if k == "talk" { node["inputs"]["previous_frames"] = json!([acc, 0]); }
+            if k == "noise" { if let Some(sd) = seed { node["inputs"]["noise_seed"] = json!(sd + i as i64); } }
+            obj.insert(format!("{k}_{i}"), node);
+        }
+        obj.insert(format!("trim_{i}"), json!({"class_type": "ImageFromBatch", "inputs": {"image": [format!("dec_{i}"), 0], "batch_index": 9, "length": 72}}));
+        obj.insert(format!("cum_{i}"), json!({"class_type": "ImageBatch", "inputs": {"image1": [acc, 0], "image2": [format!("trim_{i}"), 0]}}));
+        acc = format!("cum_{i}");
+    }
+    obj["video"]["inputs"]["images"] = json!([acc, 0]);
+}
+
 fn walk(v: &mut Value, values: &[(String, Value)]) {
     match v {
         Value::String(s) => {
@@ -402,6 +442,23 @@ fn walk(v: &mut Value, values: &[(String, Value)]) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn avatar_chunks_follow_the_speech_length() {
+        let (_, w): (Value, Value) = {
+            let t: Value = serde_json::from_str(include_str!("../workflows/avatar-infinitetalk-720.json")).unwrap();
+            (t["meta"].clone(), t["workflow"].clone())
+        };
+        let count = |secs: f64| { let mut x = w.clone(); extend_chunks(&mut x, secs); x };
+        assert!(count(3.0).get("talk_2").is_none()); // one pass = 3.24 s
+        let x = count(10.0); // 250 frames: 81 + 3 x 72 = 297 -> 4 passes
+        assert!(x.get("talk_4").is_some() && x.get("talk_5").is_none());
+        assert_eq!(x["talk_3"]["inputs"]["previous_frames"], json!(["cum_2", 0]));
+        assert_eq!(x["talk_2"]["inputs"]["previous_frames"], json!(["dec", 0]));
+        assert_eq!(x["samp_2"]["inputs"]["guider"], json!(["guide_2", 0]));
+        assert_eq!(x["samp_2"]["inputs"]["noise"], json!(["noise_2", 0]));
+        assert_eq!(x["video"]["inputs"]["images"], json!(["cum_4", 0]));
+    }
+
     #[test]
     fn open_modes_map_to_their_runpod_twin() {
         let mk = |id: &str, provider: &str| Workflow { meta: Meta { id: id.into(), provider: provider.into(), ..Default::default() }, workflow: Value::Null, source: "bundled".into(), file: String::new() };

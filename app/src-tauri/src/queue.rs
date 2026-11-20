@@ -156,6 +156,12 @@ async fn run_job(app: &AppHandle, job: &Job, cancel: &Arc<AtomicBool>) -> Result
     let mut params: Map<String, Value> = serde_json::from_str(&job.params).unwrap_or_default();
     // a step chained behind an earlier job ("job:<id>") picks up that job's finished file now
     crate::resolve_media_refs(&st, &job.id, &mut params, true)?;
+    if !wf.meta.repeat_seconds.is_empty() {
+        // a chained WAV tells the real length; otherwise the `seconds` setting (with a little margin) is used
+        let secs = params.get("audio").and_then(|v| v.as_str()).and_then(|s| s.strip_prefix("file:"))
+            .and_then(|p| std::fs::read(p).ok()).map(|b| crate::voicestudio::wav_seconds(&b)).filter(|s| *s > 0.0);
+        if let Some(s) = secs { params.insert(wf.meta.repeat_seconds.clone(), json!((s + 0.5).ceil())); }
+    }
     for def in wf.meta.inputs.iter().filter(|i| matches!(i.ty.as_str(), "image" | "audio" | "video")) {
         if let Some(path) = params.get(&def.key).and_then(|v| v.as_str()).and_then(|s| s.strip_prefix("file:")).map(String::from) {
             use base64::Engine;
@@ -315,6 +321,9 @@ fn output_path(st: &AppState, job: &Job, params: &Map<String, Value>, ext: &str)
 async fn run_hosted(app: &AppHandle, job: &Job, wf: &workflows::Workflow, params: &Map<String, Value>, graph: &Value, cancel: &Arc<AtomicBool>, t0: Instant) -> Result<(), String> {
     let st = app.state::<AppState>();
     let m = &wf.meta;
+    if m.provider == "voicestudio" {
+        return run_voicestudio(app, job, wf, params, cancel, t0).await;
+    }
     let secret = crate::hosted::secret_name(&m.provider).ok_or_else(|| format!("Unknown provider {}", m.provider))?;
     let secret = if m.provider == "runpod" { crate::runpod::secret_of(crate::runpod::active_slot(&st)) } else { secret };
     let key = secrets::get(secret).ok_or_else(|| format!("Missing {} key. Add it in Settings → Cloud providers.", m.provider))?;
@@ -385,6 +394,41 @@ async fn run_card(app: &AppHandle, job: &Job, workflow: &Value, params: &Map<Str
     crate::local::randomize_seeds(&mut wf);
     let (bytes, ext) = crate::local::generate_at(&card.client, &card.base, Some(&card.token), &wf, cancel, &tick).await?;
     save_result(app, job, params, &wf_name, t0, bytes, ext).await
+}
+
+/// Text to speech with a saved voice through the user's Voice Studio (local). No key, no cost.
+async fn run_voicestudio(app: &AppHandle, job: &Job, wf: &workflows::Workflow, params: &Map<String, Value>, cancel: &Arc<AtomicBool>, t0: Instant) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let name = params.get("voice").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if name.trim().is_empty() { return Err("Choose a saved voice (the \"voice\" setting). Save one first with voice_save.".into()); }
+    let voice = crate::voices::get(&st, &name)?;
+    let (a, id) = (app.clone(), job.id.clone());
+    let say = move |m: &str| set(&a, &id, "routing", m, "");
+    // Voice Studio on this PC when it is there, otherwise the RunPod voice endpoint of the active instance
+    let slot = crate::runpod::active_slot(&st);
+    let tts = crate::runpod::tts_endpoint(&st, slot);
+    let force_cloud = params.get("where").and_then(|v| v.as_str()) == Some("runpod");
+    let use_cloud = !tts.is_empty() && (force_cloud || !crate::voicestudio::local_available().await);
+    let run = async {
+        if use_cloud {
+            let (key, _) = crate::runpod::creds_slot(&st, slot)?;
+            let cap = crate::runpod::cap_usd(st.db.kv_get("runpod_cap_usd"));
+            if !crate::runpod::reserve(0.10, cap) { return Err(format!("RunPod spend limit reached (${cap:.2}). Raise it in Settings.")); }
+            set(app, &job.id, "generating", "Speaking in the saved voice (RunPod)…", "");
+            let r = crate::voicestudio::speak_runpod(&key, &tts, job.prompt.trim(), &voice, &say).await;
+            crate::runpod::settle(0.10, if r.is_ok() { 0.05 } else { 0.0 });
+            r
+        } else {
+            crate::voicestudio::ensure_running(&say).await?;
+            set(app, &job.id, "generating", "Speaking in the saved voice…", "");
+            crate::voicestudio::speak(job.prompt.trim(), &voice).await
+        }
+    };
+    let bytes = tokio::select! {
+        r = run => r?,
+        _ = cancelled_wait(cancel) => return Err("cancelled".into()),
+    };
+    save_result(app, job, params, &wf.meta.name_en, t0, bytes, "wav".into()).await
 }
 
 async fn save_result(app: &AppHandle, job: &Job, params: &Map<String, Value>, wf_name: &str, t0: Instant, bytes: Vec<u8>, ext: String) -> Result<(), String> {

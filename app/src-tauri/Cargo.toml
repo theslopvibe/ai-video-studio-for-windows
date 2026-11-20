@@ -30,6 +30,9 @@ chrono = "0.4"
 anyhow = "1"
 flate2 = "1"
 base64 = "0.22"
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { open as pickDialog, save as saveDialog, ask as askDialog } from "@tauri-apps/plugin-dialog";
-  import { api } from "./api";
+  import { api, type PackPreview } from "./api";
   import { S } from "./store.svelte";
   import type { Lang } from "./i18n";
   import { LANGS } from "./translations";
@@ -138,6 +138,27 @@
     if (typeof p === "string" && (await S.run(() => api.importSettings(p))) !== undefined) {
       await S.init(); S.notify(S.t("saved"));
     }
+  }
+  // ---- profile pack: voices + RunPod instances in one file
+  const el = $derived(S.lang === "el");
+  let pkName = $state(""); let pkVoices = $state(true); let pkRunpod = $state(true); let pkKeys = $state(false); let pkPass = $state("");
+  let pkFile = $state(""); let pkPrev = $state<PackPreview | null>(null);
+  let inVoices = $state(true); let inRunpod = $state(true); let inKeys = $state(true); let inActive = $state(true); let inPass = $state("");
+  async function packExport() {
+    const p = await saveDialog({ defaultPath: (pkName.trim() || "profile") + ".aivs-profile.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (!p) return;
+    const r = await S.run(() => api.profileExport(p, pkName, pkVoices, pkRunpod, pkKeys, pkPass));
+    if (r) { pkPass = ""; S.notify(el ? `Αποθηκεύτηκε: ${r.voices} φωνές, ${r.runpod} instances${r.keys ? ", με κλειδιά (κρυπτογραφημένα)" : ""}` : `Saved: ${r.voices} voices, ${r.runpod} instances${r.keys ? ", keys encrypted" : ""}`); }
+  }
+  async function packPick() {
+    const p = await pickDialog({ filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (typeof p !== "string") return;
+    const v = await S.run(() => api.profilePreview(p));
+    if (v) { pkFile = p; pkPrev = v; inPass = ""; }
+  }
+  async function packApply() {
+    const r = await S.run(() => api.profileApply(pkFile, inVoices, inRunpod, inKeys, inActive, inPass));
+    if (r) { pkPrev = null; pkFile = ""; inPass = ""; await S.init(); S.notify(el ? `Φορτώθηκε: ${r.voices} φωνές, ${r.runpod} instances${r.keys ? ", κλειδιά" : ""}` : `Loaded: ${r.voices} voices, ${r.runpod} instances${r.keys ? ", keys" : ""}`); }
   }
   const setTheme = (t: Theme) => { S.applyTheme(t); S.set("theme", t); };
   const setLang = (l: Lang) => { S.lang = l; S.set("lang", l); };
@@ -350,6 +371,38 @@
     <h2>{S.t("share_title")}</h2>
     <p class="small dim">{S.cloud === "vast" ? S.t("share_note_v") : S.t("share_note")}</p>
     <div class="row"><button onclick={exp}>{S.t("export")}</button><button onclick={imp}>{S.t("import")}</button></div>
+  </div>
+
+  <div class="card">
+    <h2>{el ? "Πακέτο προφίλ (φωνές + RunPod)" : "Profile pack (voices + RunPod)"}</h2>
+    <p class="small dim">{el
+      ? "Ένα αρχείο που μοιράζεστε στην ομάδα: οι φωνές (π.χ. Vasilis, με τις ρυθμίσεις που τις κάνουν πάντα ίδιες) και τα RunPod instances. Το κλειδί RunPod μπαίνει μόνο κρυπτογραφημένο με κωδικό."
+      : "One file the team shares: the voices (e.g. Vasilis, with the settings that keep them identical) and the RunPod instances. The RunPod key is only included encrypted with a password."}</p>
+    <h3>{el ? "Δημιουργία πακέτου" : "Create a pack"}</h3>
+    <input bind:value={pkName} placeholder={el ? "Όνομα πακέτου" : "Pack name"} />
+    <label class="row"><input type="checkbox" bind:checked={pkVoices} /> {el ? "Φωνές" : "Voices"}</label>
+    <label class="row"><input type="checkbox" bind:checked={pkRunpod} /> {el ? "RunPod instances" : "RunPod instances"}</label>
+    <label class="row"><input type="checkbox" bind:checked={pkKeys} disabled={!pkRunpod} /> {el ? "Και τα κλειδιά RunPod (κρυπτογραφημένα)" : "Also the RunPod keys (encrypted)"}</label>
+    {#if pkKeys && pkRunpod}<input type="password" bind:value={pkPass} placeholder={el ? "Κωδικός (8+ χαρακτήρες) - πες τον στους άλλους ξεχωριστά" : "Password (8+ characters) - tell the others separately"} autocomplete="off" />{/if}
+    <div class="row"><button onclick={packExport} disabled={!pkVoices && !pkRunpod}>{el ? "Αποθήκευση πακέτου" : "Save pack"}</button></div>
+    <h3>{el ? "Φόρτωση πακέτου" : "Load a pack"}</h3>
+    <div class="row"><button onclick={packPick}>{el ? "Επιλογή αρχείου…" : "Choose file…"}</button></div>
+    {#if pkPrev}
+      <p><b>{pkPrev.name || (el ? "Πακέτο χωρίς όνομα" : "Unnamed pack")}</b></p>
+      {#if pkPrev.voices.length}
+        <label class="row"><input type="checkbox" bind:checked={inVoices} /> {el ? "Φωνές" : "Voices"}: {pkPrev.voices.map((v) => v.name + (v.replaces ? (el ? " (αντικαθιστά)" : " (replaces)") : "")).join(", ")}</label>
+      {/if}
+      {#if pkPrev.runpod.length}
+        <label class="row"><input type="checkbox" bind:checked={inRunpod} /> RunPod: {pkPrev.runpod.map((r) => `#${r.slot} ${r.name || r.endpoint_id}${r.current_endpoint && r.current_endpoint !== r.endpoint_id ? (el ? " (αντικαθιστά το τωρινό)" : " (replaces the current one)") : ""}`).join(", ")}</label>
+        <label class="row"><input type="checkbox" bind:checked={inActive} disabled={!inRunpod} /> {el ? `Να γίνει active το #${pkPrev.active === "2" ? 2 : 1}` : `Make #${pkPrev.active === "2" ? 2 : 1} the active one`}</label>
+        {#if pkPrev.has_keys}
+          <label class="row"><input type="checkbox" bind:checked={inKeys} disabled={!inRunpod} /> {el ? "Φόρτωση και των κλειδιών RunPod (θέλει κωδικό). Άσ' το κενό αν θα βάλεις δικό σου κλειδί." : "Also load the RunPod keys (needs the password). Untick to use your own key."}</label>
+          {#if inKeys && inRunpod}<input type="password" bind:value={inPass} placeholder={el ? "Κωδικός πακέτου" : "Pack password"} autocomplete="off" />{/if}
+        {/if}
+      {/if}
+      <div class="small dim">{el ? "Θα αλλάξουν οι ρυθμίσεις που διάλεξες. Φόρτωσε μόνο αρχεία από άτομα που εμπιστεύεσαι." : "The ticked items will be changed. Only load files from people you trust."}</div>
+      <div class="row"><button onclick={packApply} disabled={!(inVoices && pkPrev.voices.length) && !(inRunpod && pkPrev.runpod.length)}>{el ? "Φόρτωση" : "Load"}</button><button onclick={() => { pkPrev = null; }}>{el ? "Ακύρωση" : "Cancel"}</button></div>
+    {/if}
   </div>
 
   <div class="card">

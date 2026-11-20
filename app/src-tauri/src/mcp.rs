@@ -51,6 +51,13 @@ async fn run_tool(c: &reqwest::Client, name: &str, a: &Value) -> Result<Value, S
         "list_gpus" => call(c, "GET", &format!("/v1/gpus?min_vram={}", a["min_vram"].as_f64().unwrap_or(0.0)), None).await,
         "runpod_status" => call(c, "GET", "/v1/runpod/status", None).await,
         "runpod_wake" => call(c, "POST", "/v1/runpod/wake", Some(json!({}))).await,
+        "voice_list" => call(c, "GET", "/v1/voices", None).await,
+        "voice_save" => call(c, "POST", "/v1/voices", Some(json!({ "name": a["name"], "audio_path": a["audio_path"], "consent_confirmed": a["consent_confirmed"], "speed": a["speed"], "seed": a["seed"], "voice_studio_profile": a["voice_studio_profile"], "language": a["language"], "instruct": a["instruct"], "ref_text": a["ref_text"] }))).await,
+        "avatar_video" => {
+            if !confirmed { return Err("Ρώτα πρώτα τον χρήστη (με κόστος) και ξανακάλεσε με user_confirmed=true.".into()); }
+            call(c, "POST", "/v1/avatar", Some(json!({ "script": a["script"], "voice": a["voice"], "image_path": a["image_path"], "quality": a["quality"], "look": a["look"], "project": a["project"], "user_confirmed": true }))).await
+        }
+        "voice_delete" => call(c, "POST", "/v1/voices/delete", Some(json!({ "name": a["name"] }))).await,
         "runpod_sleep" => call(c, "POST", "/v1/runpod/sleep", Some(json!({}))).await,
         "generate_video" => {
             if !confirmed {

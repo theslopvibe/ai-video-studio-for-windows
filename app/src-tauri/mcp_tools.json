@@ -1,5 +1,5 @@
 {
-  "instructions": "Which cloud: the user picks ONE cloud in the app (Settings → Which cloud): Vast (rented cards) or RunPod (serverless). video_studio_status shows it as cloud_provider. Only that cloud's tools and modes work; the other cloud's tools refuse with a message, so do not try to use them. If cloud_provider is \"runpod\" follow the RunPod paragraphs; if it is \"vast\" follow the Vast paragraph at the end (cards, gpu, vast_*), and ignore the RunPod ones. provider=\"cloud\" or omitted means that cloud; provider=\"local\" means the user's PC.\nModel choice: list_workflows returns for each mode its license (open = free on the user's PC, paid = billed per result by a provider and needs an API key; RunPod modes are billed per second of GPU time), good_for (what it does best) and est_usd_per_result (typical USD price of one result). When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price in USD, and ask before using a paid one.\nAI Video Studio For Windows generates AI video, pictures, voice and tools (open-source models such as Wan 2.2, LTX 2.5, FLUX, MiniMax H3) on a RunPod Serverless GPU endpoint (cloud, billed per second only while a job runs) or on the user's own PC, from the user's own desktop app. The app must be running on the user's PC.\nRunPod: there are no cards to rent and no models to install; the models already live on the endpoint's network volume. RunPod is either \"asleep\" (max workers 0: nothing can run, so nothing can bill) or \"awake\". generate_video wakes it up by itself, and the app puts it back to sleep after the queue has been empty for a few minutes (auto_sleep_min, default 5). The first video after sleep takes 1-3 minutes longer. Use runpod_status to show the state and the estimated USD spent this session (session_usd), runpod_wake to wake it in advance, and runpod_sleep (e.g. when the user says they are done) so that nothing can bill. (Ελληνικά: runpod_status = αν κοιμάται/ξυπνά και πόσα ξοδεύτηκαν, runpod_wake = ξύπνα το, runpod_sleep = βάλ' το για ύπνο.)\nWorkflow:\n1. Call video_studio_status first. If it fails, tell the user to open the \"AI Video Studio For Windows\" app.\n2. Each result costs real money (about 0.02-0.25 USD on RunPod, see est_usd_per_result). Before generate_video, tell the user the model, length and rough cost in USD and get a clear yes. Only then pass user_confirmed=true. Batches: one confirmation for the whole batch is enough if the user approved the count and cost. generate_video returns est_usd (typical price of that result in USD) and runs_on (runpod, local or an API provider): repeat est_usd to the user.\n3. generate_video returns a job id at once; generation takes 1-15 minutes (waking RunPod is the slow part). Poll with get_job (wait_seconds up to 45) until status is done or failed. Do not start duplicate jobs while waiting. For several videos send them all together.\n4. When done, file_path is the .mp4 on the user's disk (est_cost_usd is the measured cost on RunPod). Pass it to editing tools/skills. Report failures with the error text; make_report gives a diagnostic file.\nPrompts: write English, cinematic, concrete (subject, action, camera, lighting, style). For several clips of one story keep the same style words and character description in each prompt. For image-to-video give image_path (a local file) and describe only the motion.\nThe user may name a model (\"LTX\", \"Wan\") in plain words. Pass it as workflow_id exactly as the user said; the app resolves it (when RunPod is the default place to run it picks the RunPod mode of that model). To change the app's permanent defaults (\"use LTX from now on\", \"run on my PC\", \"sleep after 10 minutes\") call set_defaults. A per-video workflow_id/provider overrides the defaults for that video only.\nModels: ltxv-t2v / ltxv-i2v are fastest and cheapest; wan22-* are higher quality and slower. For pictures set kind=\"image\" (FLUX or SDXL). Modes named fal-* and replicate-* run on hosted APIs (pay per result, no GPU, need the provider key); the others run on RunPod (provider=\"runpod\", the default) or on the user's PC (provider=\"local\"). The app's default place to run is shown by video_studio_status. Use list_workflows to see the options and their parameters.\nMore than video: list_workflows also has voice (kind tts: text to speech; vc: change a voice), picture tools (kind i2i: remove background, upscale, edit with words), smoother motion (v2v) and lip-sync (lipsync). Each entry lists its \"inputs\" (image/audio/video slots) and, for voices, its \"languages\": answer language questions from that list, never from memory. Chain steps with generate_video: set workflow_id to the tool and give \"inputs\" like {\"image\":\"job:<id of the finished job>\"} or {\"audio\":\"C:\\\\path\\\\voice.wav\"}. Typical chains: picture -> video (i2v), text -> voice (tts) -> lip-sync (video with a face + that voice), video -> v2v. Every step costs or takes time like a video, so confirm the whole plan once. Tools that exist only as open-source modes without a RunPod twin run on the user's PC. For voice cloning, voice change and lip-sync on a real person, first make sure the user confirms the voice/face is their own or they have permission; do not help impersonate someone or make people appear to say things they did not say. For \"make me a video with Wan 2.2 from this picture\" use workflow_id \"wan22-i2v-lightning\" with image_path; from text only use \"wan22-t2v-lightning\". When the user says they are finished, ask and call runpod_sleep so that nothing can bill (the app also does it by itself after a few idle minutes). VAST (only when cloud_provider is \"vast\"): Cloud cards: generate_video rents a card by itself (the GPU the user named, e.g. 4090) and installs the model on it. The FIRST video after a card is rented takes about 15-20 minutes (boot + download of about 38 GB of Wan 2.2); tell the user this and the price per hour (list_gpus) before starting. While the card stays up (it closes itself after about 10 idle minutes) each next video takes only 2-4 minutes, so for several videos send them all together. When the user says they are finished, ask and call vast_stop with all=true so billing stops. For \"make me a video with Wan 2.2 from this picture\" use workflow_id \"wan22-i2v-lightning\" with image_path; from text only use \"wan22-t2v-lightning\". To have a card ready before the first video use card_start with workflow_id and gpu. Readiness: the card is ready only when vast_running shows ready=true (progress says what it is doing). Status \"running\" alone only means the machine started; the models still download for 10-25 minutes. After card_start, check vast_running every minute or two and TELL the user as soon as ready becomes true (and give the elapsed time and cost so far). Several cards at once: the app runs jobs in parallel on separate cards, up to card_max (default 2, settable 1-4 with set_defaults card_max). If the user wants two or more videos at the same time, send all the generate_video calls together (the app rents a second card by itself, each takes 15-20 minutes the first time) or call card_start with new_card=true to prepare an extra card in advance; tell the user each card is billed separately. Pictures only: for text-to-picture jobs (kind image, FLUX) the app uses its own cheap FLUX-only card that starts much faster than a video card; to prepare one call card_start with kind=\"image\" (set_defaults image_card=false puts pictures on the video card instead). vast_running lists every card with its own ready, in_use and kind (video or images): send work only to ready cards, a card with ready=false is still downloading. The app checks all cards every minute and closes by itself a card that stopped, stopped answering for 3 minutes, never became ready in 45 minutes, or is idle for the auto-close time (set_defaults auto_close_min 5/10/30/0), and shows a notification; tell the user if vast_running shows fewer cards than before.",
+  "instructions": "Which cloud: the user picks ONE cloud in the app (Settings → Which cloud): Vast (rented cards) or RunPod (serverless). video_studio_status shows it as cloud_provider. Only that cloud's tools and modes work; the other cloud's tools refuse with a message, so do not try to use them. If cloud_provider is \"runpod\" follow the RunPod paragraphs; if it is \"vast\" follow the Vast paragraph at the end (cards, gpu, vast_*), and ignore the RunPod ones. provider=\"cloud\" or omitted means that cloud; provider=\"local\" means the user's PC.\nModel choice: list_workflows returns for each mode its license (open = free on the user's PC, paid = billed per result by a provider and needs an API key; RunPod modes are billed per second of GPU time), good_for (what it does best) and est_usd_per_result (typical USD price of one result). When the user describes a task, recommend the best-fitting mode (e.g. text inside images -> a paid GPT Image mode, quick cheap photoreal images -> Nano Banana, long free clips -> open-source), state the price in USD, and ask before using a paid one.\nAI Video Studio For Windows generates AI video, pictures, voice and tools (open-source models such as Wan 2.2, LTX 2.5, FLUX, MiniMax H3) on a RunPod Serverless GPU endpoint (cloud, billed per second only while a job runs) or on the user's own PC, from the user's own desktop app. The app must be running on the user's PC.\nRunPod: there are no cards to rent and no models to install; the models already live on the endpoint's network volume. RunPod is either \"asleep\" (max workers 0: nothing can run, so nothing can bill) or \"awake\". generate_video wakes it up by itself, and the app puts it back to sleep after the queue has been empty for a few minutes (auto_sleep_min, default 5). The first video after sleep takes 1-3 minutes longer. Use runpod_status to show the state and the estimated USD spent this session (session_usd), runpod_wake to wake it in advance, and runpod_sleep (e.g. when the user says they are done) so that nothing can bill. (Ελληνικά: runpod_status = αν κοιμάται/ξυπνά και πόσα ξοδεύτηκαν, runpod_wake = ξύπνα το, runpod_sleep = βάλ' το για ύπνο.)\nWorkflow:\n1. Call video_studio_status first. If it fails, tell the user to open the \"AI Video Studio For Windows\" app.\n2. Each result costs real money (about 0.02-0.25 USD on RunPod, see est_usd_per_result). Before generate_video, tell the user the model, length and rough cost in USD and get a clear yes. Only then pass user_confirmed=true. Batches: one confirmation for the whole batch is enough if the user approved the count and cost. generate_video returns est_usd (typical price of that result in USD) and runs_on (runpod, local or an API provider): repeat est_usd to the user.\n3. generate_video returns a job id at once; generation takes 1-15 minutes (waking RunPod is the slow part). Poll with get_job (wait_seconds up to 45) until status is done or failed. Do not start duplicate jobs while waiting. For several videos send them all together.\n4. When done, file_path is the .mp4 on the user's disk (est_cost_usd is the measured cost on RunPod). Pass it to editing tools/skills. Report failures with the error text; make_report gives a diagnostic file.\nPrompts: write English, cinematic, concrete (subject, action, camera, lighting, style). For several clips of one story keep the same style words and character description in each prompt. For image-to-video give image_path (a local file) and describe only the motion.\nThe user may name a model (\"LTX\", \"Wan\") in plain words. Pass it as workflow_id exactly as the user said; the app resolves it (when RunPod is the default place to run it picks the RunPod mode of that model). To change the app's permanent defaults (\"use LTX from now on\", \"run on my PC\", \"sleep after 10 minutes\") call set_defaults. A per-video workflow_id/provider overrides the defaults for that video only.\nModels: ltxv-t2v / ltxv-i2v are fastest and cheapest; wan22-* are higher quality and slower. For pictures set kind=\"image\" (FLUX or SDXL). Modes named fal-* and replicate-* run on hosted APIs (pay per result, no GPU, need the provider key); the others run on RunPod (provider=\"runpod\", the default) or on the user's PC (provider=\"local\"). The app's default place to run is shown by video_studio_status. Use list_workflows to see the options and their parameters.\nMore than video: list_workflows also has voice (kind tts: text to speech; vc: change a voice), picture tools (kind i2i: remove background, upscale, edit with words), smoother motion (v2v) and lip-sync (lipsync). Each entry lists its \"inputs\" (image/audio/video slots) and, for voices, its \"languages\": answer language questions from that list, never from memory. Chain steps with generate_video: set workflow_id to the tool and give \"inputs\" like {\"image\":\"job:<id of the finished job>\"} or {\"audio\":\"C:\\\\path\\\\voice.wav\"}. Typical chains: picture -> video (i2v), text -> voice (tts) -> lip-sync (video with a face + that voice), video -> v2v. SIMPLEST WAY for \"a video with <voice>, this picture, this script\": call avatar_video once (voice by saved name, image_path, script); it does the speech and the avatar and reads the length by itself. Saved voices live only on this PC (private, never in the public app): voice_list shows them, voice_save adds one (with speed, seed, Voice Studio profile). The manual steps below are only for custom chains. TALKING AVATAR VIDEO (YouTube, HeyGen style): 1) voice: if the user names a voice, use voice_list; for a new one ask whether it is their own voice or they have permission, then voice_save (a 5-15 s clear sample). 2) generate_video kind tts, workflow_id chatterbox-clone, prompt = the script, extra_params {language:\"English (en)\"}, inputs {audio:\"voice:<name>\"} (without a saved voice use kokoro-tts). 3) when that job is done, generate_video with workflow_id avatar-infinitetalk-720 (or -480 for a quick/cheap test), image_path = photo of the person (face to camera), inputs {audio:\"job:<id of step 2>\"}, prompt = a short look/behaviour description, extra_params {seconds: speech length in seconds, round UP: about 2.5 words per second plus 10%}. It is slow and costs real money (several minutes of GPU per 10 s of video, and the first run downloads about 30 GB), so confirm the plan, price and time once before step 2. Only faces and voices the user has permission to use. Every step costs or takes time like a video, so confirm the whole plan once. Tools that exist only as open-source modes without a RunPod twin run on the user's PC. For voice cloning, voice change and lip-sync on a real person, first make sure the user confirms the voice/face is their own or they have permission; do not help impersonate someone or make people appear to say things they did not say. For \"make me a video with Wan 2.2 from this picture\" use workflow_id \"wan22-i2v-lightning\" with image_path; from text only use \"wan22-t2v-lightning\". When the user says they are finished, ask and call runpod_sleep so that nothing can bill (the app also does it by itself after a few idle minutes). VAST (only when cloud_provider is \"vast\"): Cloud cards: generate_video rents a card by itself (the GPU the user named, e.g. 4090) and installs the model on it. The FIRST video after a card is rented takes about 15-20 minutes (boot + download of about 38 GB of Wan 2.2); tell the user this and the price per hour (list_gpus) before starting. While the card stays up (it closes itself after about 10 idle minutes) each next video takes only 2-4 minutes, so for several videos send them all together. When the user says they are finished, ask and call vast_stop with all=true so billing stops. For \"make me a video with Wan 2.2 from this picture\" use workflow_id \"wan22-i2v-lightning\" with image_path; from text only use \"wan22-t2v-lightning\". To have a card ready before the first video use card_start with workflow_id and gpu. Readiness: the card is ready only when vast_running shows ready=true (progress says what it is doing). Status \"running\" alone only means the machine started; the models still download for 10-25 minutes. After card_start, check vast_running every minute or two and TELL the user as soon as ready becomes true (and give the elapsed time and cost so far). Several cards at once: the app runs jobs in parallel on separate cards, up to card_max (default 2, settable 1-4 with set_defaults card_max). If the user wants two or more videos at the same time, send all the generate_video calls together (the app rents a second card by itself, each takes 15-20 minutes the first time) or call card_start with new_card=true to prepare an extra card in advance; tell the user each card is billed separately. Pictures only: for text-to-picture jobs (kind image, FLUX) the app uses its own cheap FLUX-only card that starts much faster than a video card; to prepare one call card_start with kind=\"image\" (set_defaults image_card=false puts pictures on the video card instead). vast_running lists every card with its own ready, in_use and kind (video or images): send work only to ready cards, a card with ready=false is still downloading. The app checks all cards every minute and closes by itself a card that stopped, stopped answering for 3 minutes, never became ready in 45 minutes, or is idle for the auto-close time (set_defaults auto_close_min 5/10/30/0), and shows a notification; tell the user if vast_running shows fewer cards than before.",
   "tools": [
     {
       "name": "video_studio_status",
@@ -122,7 +122,7 @@
           },
           "inputs": {
             "type": "object",
-            "description": "Media inputs by slot key (see the workflow's inputs): value \"job:<job id>\" = result of an earlier job, or a local file path (png/jpg/webp, mp3/wav/flac/ogg/m4a, mp4/webm/mov)."
+            "description": "Media inputs by slot key (see the workflow's inputs): value \"job:<job id>\" = result of an earlier job, \"voice:<name>\" = a saved voice (audio slots only), or a local file path (png/jpg/webp, mp3/wav/flac/ogg/m4a, mp4/webm/mov)."
           },
           "extra_params": {
             "type": "object",
@@ -316,6 +316,125 @@
           },
           "user_confirmed": {
             "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "name": "voice_list",
+      "description": "List the voices saved in the app (name only). A saved voice can be used as the voice of any text-to-speech job. (Λίστα αποθηκευμένων φωνών.)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "voice_save",
+      "description": "Save a voice sample (5-15 seconds of clear speech, mp3/wav/flac/ogg/m4a on the PC) under a name, e.g. \"vasilis\". Ask the user first whether it is their own voice or they have the person's permission, then set consent_confirmed=true. Afterwards use it for voice-over: generate_video with workflow_id \"chatterbox-clone\", kind \"tts\", prompt = the script, extra_params {\"language\":\"English (en)\"} and inputs {\"audio\":\"voice:vasilis\"}. (Αποθηκεύει φωνή με όνομα.)",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "name",
+          "audio_path",
+          "consent_confirmed"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "audio_path": {
+            "type": "string",
+            "description": "Local path of the voice sample."
+          },
+          "consent_confirmed": {
+            "type": "boolean",
+            "description": "True only after the user confirmed the voice is theirs or they have permission."
+          },
+          "speed": {
+            "type": "number",
+            "description": "Speed for this voice (1.0 normal; 0.98 is a bit slower)."
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Seed that keeps the voice identical between videos."
+          },
+          "voice_studio_profile": {
+            "type": "string",
+            "description": "Optional id of a Voice Studio profile of this voice on the PC (used first, when present)."
+          },
+          "language": {
+            "type": "string",
+            "description": "Language the voice speaks, default English."
+          },
+          "instruct": {
+            "type": "string",
+            "description": "Voice Studio style tags that are part of the voice, for example \"american accent\"."
+          },
+          "ref_text": {
+            "type": "string",
+            "description": "The exact words spoken in the sample (keeps the voice identical on every machine and avoids a speech-to-text model)."
+          }
+        }
+      }
+    },
+    {
+      "name": "voice_delete",
+      "description": "Delete a saved voice by name (the user must have asked for it).",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "avatar_video",
+      "description": "Make a talking-avatar video (YouTube / HeyGen style) in ONE call: \"a video with <voice>, this picture, this script\". It queues two jobs: the speech in a saved voice (Voice Studio on the user's PC, free; the voice comes out the same every time) and then the avatar (rented GPU, costs money, slow: several minutes per 10 s of video, the first run on a cloud can download ~30 GB). The speech length is read from the finished speech, nothing to estimate. Ask the user first (quality 480 or 720, about how long the script is, the cost) and set user_confirmed=true. Follow the two jobs with list_jobs; the video is the second. Only faces and voices the user has permission to use. (Βίντεο με avatar που μιλά.)",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "script",
+          "voice",
+          "image_path",
+          "user_confirmed"
+        ],
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "The exact words to say, in English (the saved voices speak English)."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Name of a saved voice, e.g. \"vasilis\" (see voice_list)."
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Local path of a photo of the person (png/jpg), face to the camera; wide 16:9 photos work best."
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "480",
+              "720"
+            ],
+            "description": "Video size; 720 is slower and costs more. Default 480."
+          },
+          "look": {
+            "type": "string",
+            "description": "Optional short English description of how the person looks and acts."
+          },
+          "project": {
+            "type": "string",
+            "description": "Project/folder name in the app (default \"Claude\")."
+          },
+          "user_confirmed": {
+            "type": "boolean",
+            "description": "True only after the user explicitly agreed to the cost."
           }
         }
       }
