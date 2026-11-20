@@ -136,6 +136,7 @@ export const api = {
   exportSettings: (path: string) => invoke<void>("export_settings", { path }),
   importSettings: (path: string) => invoke<void>("import_settings", { path }),
   profileExport: (path: string, name: string, notes: string, voices: boolean, runpod: boolean, keys: boolean, password: string) => invoke<{ voices: number; runpod: number; keys: boolean }>("profile_export", { path, name, notes, voices, runpod, keys, password }),
+  runpodDeployVoice: (slot: number, acceptLicences: boolean) => invoke<string>("runpod_deploy_voice", { slot, acceptLicences }),
   profilePreview: (path: string) => invoke<PackPreview>("profile_preview", { path }),
   profileApply: (path: string, voices: boolean, runpod: boolean, keys: boolean, makeActive: boolean, password: string) => invoke<{ voices: number; runpod: number; keys: boolean }>("profile_apply", { path, voices, runpod, keys, makeActive, password }),
 };

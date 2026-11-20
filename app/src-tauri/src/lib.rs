@@ -1100,6 +1100,11 @@ fn profile_apply(st: State<AppState>, path: String, voices: bool, runpod: bool, 
     profile::apply(&st, &path, &profile::Apply { voices, runpod, keys, make_active, password: &password })
 }
 
+#[tauri::command]
+async fn runpod_deploy_voice(st: State<'_, AppState>, slot: u8, accept_licences: bool) -> R<String> {
+    runpod::deploy_voice(&st, if slot == 2 { 2 } else { 1 }, accept_licences).await
+}
+
 // ---- hosted providers and chat
 
 #[tauri::command]
@@ -1354,13 +1359,34 @@ pub fn run() {
             tauri::async_runtime::spawn(editor::serve_paint(paint_dir));
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // closing the app puts RunPod to sleep, which stops a video that is still being made: ask first
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle().clone();
+                let st = app.state::<AppState>();
+                let n = runpod::live_jobs(&st);
+                if n > 0 {
+                    api.prevent_close();
+                    let el = st.db.kv_get("lang").as_deref() == Some("el");
+                    let (msg, yes, no) = if el {
+                        (format!("Τρέχει ακόμα βίντεο στο RunPod ({n}). Αν κλείσεις τώρα, σταματά και χάνεται. Να κλείσω;"), "Κλείσιμο", "Να μείνει ανοιχτό")
+                    } else {
+                        (format!("A video is still being made on RunPod ({n}). If you close now it stops and is lost. Close anyway?"), "Close anyway", "Keep open")
+                    };
+                    let a2 = app.clone();
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+                    app.dialog().message(msg).title("AI Video Studio").buttons(MessageDialogButtons::OkCancelCustom(yes.to_string(), no.to_string()))
+                        .show(move |close| { if close { a2.exit(0); } });
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             bootstrap, reload_workflows, setting_set, secret_set,
             project_create, project_update, project_delete,
             jobs_list, job_enqueue, job_cancel, job_retry, job_delete,
             enhance_prompt, test_llm, test_vast, test_anthropic, apply_scale_to_zero,
             gpu_offers, apply_gpus, install_on_workers, vast_instances, vast_destroy, warm_up, warm_cancel, setup_endpoint, runpod_status, runpod_wake, runpod_sleep,
-            connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings, profile_export, profile_preview, profile_apply,
+            connect_info, connect_clients, logs_tail, log_ui, logs_report, logs_dir, hf_lookup, custom_model_add, custom_model_remove, workflow_import, reveal, export_settings, import_settings, profile_export, profile_preview, profile_apply, runpod_deploy_voice,
             hardware_scan, local_status, local_install, local_install_models, setup_cancel, local_start, local_stop,
             hosted_test, chat_providers, chat_models, chat_folders, chat_folder_create, chat_folder_rename, chat_folder_delete, chat_list, chat_new,
             chat_update, chat_delete, chat_messages, chat_message_delete, chat_send, editor_url, paint_url, image_data_url, input_import, text_output

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1
+
+- **Your own voice endpoint.** Settings > RunPod has a new "Voice (Voice Studio) in this account" part: one button creates the voice endpoint in your own RunPod account (parked, free while idle, on the same volume as your models, A40 only so the voice always comes out the same). You must accept the model licences first (OmniVoice is CC-BY-NC, non-commercial). The first voice downloads about 3 GB.
+- **Long scripts.** A long script is now spoken in sentence-sized parts (same voice, seed and speed) and joined, and a script longer than about 220 characters goes to the RunPod voice when you have one, because a laptop GPU gave up on 45 seconds of speech. Measured: 112 words (36 s of speech) took 4 min 18 s on RunPod including the wake-up.
+- **Talking avatar length test.** A 36 s speech became a 37.8 s video (832x480) in about 31 minutes on an A40 including the start, with a stable face to the last frame. Roughly 50 s of GPU time per second of video, so about 0.8 to 1 USD for 40 s.
+- **Closing the app while a RunPod video is being made now asks first.** Closing parks RunPod, which stops the video; before, it did this without asking.
+
 ## 0.10.0
 
 - **Talking avatar (HeyGen style).** New mode "Photo + Voice → Talking avatar (InfiniteTalk 480p)": a photo of a person plus a voice recording of any length becomes a video where they speak. On RunPod it runs on your own endpoint (the models go on the same network volume as Wan; the endpoint is parked between videos). A 5 second test took 18 minutes including the first start, about 0.1-0.5 USD. Claude and GLM have a one-step tool, `avatar_video` (voice by name, photo, script). The RunPod job body now carries the voice recording, and the avatar may take up to 3 hours.

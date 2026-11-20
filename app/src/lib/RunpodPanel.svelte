@@ -3,12 +3,23 @@
   // (They replace the old "start card" / "delete card" buttons: there are no rented cards any more.)
   import { onMount } from "svelte";
   import { S } from "./store.svelte";
+  import { api } from "./api";
   import { ct } from "./chatStrings";
 
   onMount(() => { S.refreshRunpod(); });
   const st = $derived(S.rp?.state);
   const help = $derived(st === "asleep" ? "rp_asleep_help" : st === "working" ? "rp_working_help" : "rp_awake_help");
   const sleepMin = $derived(S.settings.runpod_sleep_min ?? "5");
+  const slot = $derived(S.settings.runpod_active === "2" ? 2 : 1);
+  const hasVoice = $derived(!!(S.settings[slot === 2 ? "runpod_tts_endpoint_id_2" : "runpod_tts_endpoint_id"] ?? "").trim());
+  let vAccept = $state(false); let vBusy = $state(false); let vMsg = $state("");
+  const el = $derived(S.lang === "el");
+  async function deployVoice() {
+    vBusy = true; vMsg = "";
+    try { const id = await api.runpodDeployVoice(slot, vAccept); await S.init(); vMsg = (el ? "Έτοιμο, endpoint φωνής: " : "Done, voice endpoint: ") + id; }
+    catch (e) { vMsg = String(e); }
+    vBusy = false;
+  }
 </script>
 
 {#if !S.runpodReady}
@@ -32,4 +43,15 @@
   </div>
   <label class="row small dim" style="margin-top:6px"><input type="checkbox" checked={S.settings.runpod_sleep_on_exit !== "0"} onchange={(e) => S.set("runpod_sleep_on_exit", e.currentTarget.checked ? "1" : "0")} />{ct(S.lang, "rp_sleep_exit")}</label>
   <p class="small dim" style="margin-top:6px">{ct(S.lang, "rp_sleep_note")}</p>
+  <div style="margin-top:10px">
+    <b>{el ? "Φωνή (Voice Studio) σε αυτόν τον λογαριασμό" : "Voice (Voice Studio) in this account"}</b>
+    {#if hasVoice}
+      <p class="small dim">{el ? "Υπάρχει endpoint φωνής: παρκαρισμένο, χρεώνει μόνο όσο μιλά." : "A voice endpoint exists: parked, billed only while speaking."}</p>
+    {:else}
+      <p class="small dim">{el ? "Φτιάχνει στον δικό σου λογαριασμό ένα endpoint φωνής (παρκαρισμένο, δωρεάν όσο δεν δουλεύει) στον ίδιο volume με τα μοντέλα. Η πρώτη φωνή κατεβάζει ~3 GB και κάνει λίγα λεπτά." : "Creates a voice endpoint in your own account (parked, free while idle) on the same volume as your models. The first voice downloads ~3 GB and takes a few minutes."}</p>
+      <label class="row small"><input type="checkbox" bind:checked={vAccept} />{el ? "Αποδέχομαι τις άδειες των μοντέλων: OmniVoice (CC-BY-NC, μη εμπορική χρήση) και Higgs Audio tokenizer" : "I accept the model licences: OmniVoice (CC-BY-NC, non-commercial use) and the Higgs Audio tokenizer"}</label>
+      <div class="row"><button onclick={deployVoice} disabled={!vAccept || vBusy}>{el ? "Φτιάξε το endpoint φωνής" : "Create the voice endpoint"}</button></div>
+    {/if}
+    {#if vMsg}<div class="small">{vMsg}</div>{/if}
+  </div>
 {/if}

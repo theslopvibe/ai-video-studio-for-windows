@@ -41,6 +41,13 @@ fn part_text(b: &mut Vec<u8>, boundary: &str, name: &str, value: &str) {
 /// reference, seed and consent; without one the saved sample is uploaded as the reference. The first call after a start
 /// loads the model (several minutes on a laptop GPU), later ones take seconds.
 pub async fn speak(text: &str, voice: &Cfg) -> Result<Vec<u8>, String> {
+    let parts = split_text(text, MAX_PART);
+    let mut wavs = vec![];
+    for p in &parts { wavs.push(speak_one(p, voice).await?); }
+    join_wavs(&wavs)
+}
+
+async fn speak_one(text: &str, voice: &Cfg) -> Result<Vec<u8>, String> {
     let c = client();
     let boundary = format!("aivs{}", uuid::Uuid::new_v4().simple());
     let mut body: Vec<u8> = vec![];
@@ -72,23 +79,95 @@ pub async fn speak(text: &str, voice: &Cfg) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
+/// Longest text part sent to the voice engine at once (characters). One long script made Voice Studio on a laptop GPU give up
+/// after its 300 s compute limit, so long scripts are spoken in sentence-sized parts (same seed and speed) and joined.
+const MAX_PART: usize = 220;
+
+/// Splits a script at sentence ends into parts of at most `max` characters (a longer sentence is split at commas, then spaces).
+pub fn split_text(text: &str, max: usize) -> Vec<String> {
+    let mut sentences: Vec<String> = vec![];
+    let mut cur = String::new();
+    for ch in text.trim().chars() {
+        cur.push(ch);
+        if matches!(ch, '.' | '!' | '?' | '\u{2026}' | '\u{37e}' | '\n') { sentences.push(std::mem::take(&mut cur)); }
+    }
+    if !cur.trim().is_empty() { sentences.push(cur); }
+    let mut pieces: Vec<String> = vec![];
+    for s in sentences {
+        let s = s.trim().to_string();
+        if s.is_empty() { continue; }
+        if s.chars().count() <= max { pieces.push(s); continue; }
+        let mut line = String::new();
+        for w in s.split_inclusive(|c: char| c == ',' || c == ' ') {
+            if line.chars().count() + w.chars().count() > max && !line.trim().is_empty() { pieces.push(line.trim().to_string()); line.clear(); }
+            line.push_str(w);
+        }
+        if !line.trim().is_empty() { pieces.push(line.trim().to_string()); }
+    }
+    let mut parts: Vec<String> = vec![];
+    for p in pieces {
+        match parts.last_mut() {
+            Some(last) if last.chars().count() + 1 + p.chars().count() <= max => { last.push(' '); last.push_str(&p); }
+            _ => parts.push(p),
+        }
+    }
+    if parts.is_empty() { parts.push(text.trim().to_string()); }
+    parts
+}
+
+/// (sample rate, channels, bits per sample, sound data) of a PCM WAV.
+fn wav_parts(b: &[u8]) -> Option<(u32, u16, u16, &[u8])> {
+    if b.len() < 44 || &b[0..4] != b"RIFF" || &b[8..12] != b"WAVE" { return None; }
+    let (mut i, mut fmt) = (12usize, None);
+    while i + 8 <= b.len() {
+        let id = &b[i..i + 4];
+        let len = u32::from_le_bytes([b[i + 4], b[i + 5], b[i + 6], b[i + 7]]) as usize;
+        if id == b"fmt " && i + 8 + 16 <= b.len() {
+            fmt = Some((u32::from_le_bytes([b[i + 12], b[i + 13], b[i + 14], b[i + 15]]), u16::from_le_bytes([b[i + 10], b[i + 11]]), u16::from_le_bytes([b[i + 22], b[i + 23]])));
+        }
+        if id == b"data" {
+            let end = (i + 8 + len).min(b.len());
+            return fmt.map(|(r, c, bits)| (r, c, bits, &b[i + 8..end]));
+        }
+        i += 8 + len + (len & 1);
+    }
+    None
+}
+
+/// Joins WAV parts of the same format into one WAV with a quarter second of silence between them.
+pub fn join_wavs(parts: &[Vec<u8>]) -> Result<Vec<u8>, String> {
+    if parts.len() == 1 { return Ok(parts[0].clone()); }
+    let mut data: Vec<u8> = vec![];
+    let mut fmt: Option<(u32, u16, u16)> = None;
+    for p in parts {
+        let (r, c, bits, d) = wav_parts(p).ok_or("The voice returned a sound file that cannot be joined.")?;
+        match fmt {
+            None => fmt = Some((r, c, bits)),
+            Some(f) if f != (r, c, bits) => return Err("The voice parts have different sound formats.".into()),
+            _ => {}
+        }
+        if !data.is_empty() { data.extend(std::iter::repeat(0u8).take((r as usize / 4) * c as usize * (bits as usize / 8))); }
+        data.extend_from_slice(d);
+    }
+    let (r, c, bits) = fmt.ok_or("No voice parts to join.")?;
+    let align = c as u32 * bits as u32 / 8;
+    let mut out = b"RIFF".to_vec();
+    out.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes()); out.extend_from_slice(&1u16.to_le_bytes()); out.extend_from_slice(&c.to_le_bytes());
+    out.extend_from_slice(&r.to_le_bytes()); out.extend_from_slice(&(r * align).to_le_bytes()); out.extend_from_slice(&(align as u16).to_le_bytes()); out.extend_from_slice(&bits.to_le_bytes());
+    out.extend_from_slice(b"data"); out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out.extend_from_slice(&data);
+    Ok(out)
+}
+
 /// Is Voice Studio on this PC (running or installed)?
 pub async fn local_available() -> bool { alive(&client()).await || exe().is_some() }
 
-/// Speaks `text` on the RunPod Voice Studio endpoint (same backend and settings as the PC). The endpoint is parked
-/// (workers 0) between uses: it is woken here and parked again when the audio is back, so only the seconds used are billed.
-pub async fn speak_runpod(key: &str, endpoint: &str, text: &str, voice: &Cfg, say: &(dyn Fn(&str) + Sync)) -> Result<Vec<u8>, String> {
+/// One text part on the RunPod voice endpoint: submit (retrying while the endpoint wakes up), wait, return the WAV bytes.
+async fn runpod_one(c: &reqwest::Client, key: &str, endpoint: &str, input: &serde_json::Value, say: &(dyn Fn(&str) + Sync)) -> Result<Vec<u8>, String> {
     use base64::Engine;
-    if !crate::runpod::valid_id(endpoint) { return Err("The RunPod voice endpoint id looks wrong. Check it in Settings.".into()); }
     let b64 = base64::engine::general_purpose::STANDARD;
-    let sample = tokio::fs::read(&voice.file).await.map_err(|e| e.to_string())?;
-    let ext = voice.file.extension().and_then(|x| x.to_str()).unwrap_or("wav").to_string();
-    let mut input = serde_json::json!({ "text": text, "language": voice.language, "speed": voice.speed, "instruct": voice.instruct, "ref_text": voice.ref_text, "ref_audio_b64": b64.encode(&sample), "ref_ext": ext });
-    if let Some(s) = voice.seed { input["seed"] = serde_json::json!(s); }
-    let c = reqwest::Client::builder().user_agent("AI-Video-Studio").timeout(Duration::from_secs(60)).build().map_err(|e| e.to_string())?;
-    say("Waking up the RunPod voice...");
-    crate::runpod::set_max(key, endpoint, 1).await?;
-    let res: Result<Vec<u8>, String> = async {
         // right after waking, RunPod answers "paused" for a few seconds: retry the submit for about a minute
         let mut sub = serde_json::Value::Null;
         for attempt in 0..14 {
@@ -113,6 +192,33 @@ pub async fn speak_runpod(key: &str, endpoint: &str, text: &str, voice: &Cfg, sa
                 other => say(&format!("RunPod voice: {} ({}s)", other.to_lowercase().replace('_', " "), t0.elapsed().as_secs())),
             }
         }
+}
+
+/// Speaks `text` on the RunPod Voice Studio endpoint (same backend and settings as the PC). The endpoint is parked
+/// (workers 0) between uses: it is woken here and parked again when the audio is back, so only the seconds used are billed.
+pub async fn speak_runpod(key: &str, endpoint: &str, text: &str, voice: &Cfg, say: &(dyn Fn(&str) + Sync)) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    if !crate::runpod::valid_id(endpoint) { return Err("The RunPod voice endpoint id looks wrong. Check it in Settings.".into()); }
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let sample = tokio::fs::read(&voice.file).await.map_err(|e| e.to_string())?;
+    let ext = voice.file.extension().and_then(|x| x.to_str()).unwrap_or("wav").to_string();
+    let sample_b64 = b64.encode(&sample);
+    let input_for = |t: &str| {
+        let mut input = serde_json::json!({ "text": t, "language": voice.language, "speed": voice.speed, "instruct": voice.instruct, "ref_text": voice.ref_text, "ref_audio_b64": sample_b64, "ref_ext": ext });
+        if let Some(s) = voice.seed { input["seed"] = serde_json::json!(s); }
+        input
+    };
+    let c = reqwest::Client::builder().user_agent("AI-Video-Studio").timeout(Duration::from_secs(60)).build().map_err(|e| e.to_string())?;
+    say("Waking up the RunPod voice...");
+    crate::runpod::set_max(key, endpoint, 1).await?;
+    let res: Result<Vec<u8>, String> = async {
+        let parts = split_text(text, MAX_PART);
+        let mut wavs = vec![];
+        for (n, part) in parts.iter().enumerate() {
+            if parts.len() > 1 { say(&format!("RunPod voice: part {} of {}", n + 1, parts.len())); }
+            wavs.push(runpod_one(&c, key, endpoint, &input_for(part), say).await?);
+        }
+        join_wavs(&wavs)
     }.await;
     // park it again whatever happened: an idle worker is billed
     if let Err(e) = crate::runpod::set_max(key, endpoint, 0).await { crate::log::info(&format!("runpod: could not park the voice endpoint: {e}")); }
@@ -147,5 +253,21 @@ mod tests {
         w.extend_from_slice(b"data"); w.extend_from_slice(&96000u32.to_le_bytes()); w.extend_from_slice(&vec![0u8; 96000]);
         assert!((wav_seconds(&w) - 2.0).abs() < 1e-6);
         assert_eq!(wav_seconds(b"nope"), 0.0);
+    }
+
+    #[test]
+    fn long_scripts_are_split_at_sentences_and_joined() {
+        let t = "Hello there. This is the second sentence! And a third one? Yes.";
+        let p = split_text(t, 30);
+        assert!(p.len() >= 2 && p.iter().all(|x| x.chars().count() <= 30), "{p:?}");
+        assert_eq!(p.join(" "), t);
+        assert_eq!(split_text("short", 220), vec!["short".to_string()]);
+        let long = "word, ".repeat(100);
+        assert!(split_text(&long, 50).iter().all(|x| x.chars().count() <= 50));
+        let mk = |n: usize| { let mut w = b"RIFF\0\0\0\0WAVEfmt ".to_vec(); w.extend_from_slice(&16u32.to_le_bytes()); w.extend_from_slice(&1u16.to_le_bytes()); w.extend_from_slice(&1u16.to_le_bytes()); w.extend_from_slice(&24000u32.to_le_bytes()); w.extend_from_slice(&48000u32.to_le_bytes()); w.extend_from_slice(&2u16.to_le_bytes()); w.extend_from_slice(&16u16.to_le_bytes()); w.extend_from_slice(b"data"); w.extend_from_slice(&(n as u32).to_le_bytes()); w.extend(vec![1u8; n]); w };
+        let j = join_wavs(&[mk(48000), mk(48000)]).unwrap();
+        // 1 s + 0.25 s of silence + 1 s
+        assert!((wav_seconds(&j) - 2.25).abs() < 1e-6);
+        assert_eq!(join_wavs(&[mk(100)]).unwrap().len(), mk(100).len());
     }
 }

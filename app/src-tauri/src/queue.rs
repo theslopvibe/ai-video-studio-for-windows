@@ -408,7 +408,10 @@ async fn run_voicestudio(app: &AppHandle, job: &Job, wf: &workflows::Workflow, p
     let slot = crate::runpod::active_slot(&st);
     let tts = crate::runpod::tts_endpoint(&st, slot);
     let force_cloud = params.get("where").and_then(|v| v.as_str()) == Some("runpod");
-    let use_cloud = !tts.is_empty() && (force_cloud || !crate::voicestudio::local_available().await);
+    // a long script is too heavy for a laptop GPU (Voice Studio gives up after 300 s): it goes to the RunPod voice when there is one
+    let long_text = job.prompt.chars().count() > 220;
+    let force_pc = params.get("where").and_then(|v| v.as_str()) == Some("pc");
+    let use_cloud = !tts.is_empty() && !force_pc && (force_cloud || long_text || !crate::voicestudio::local_available().await);
     let run = async {
         if use_cloud {
             let (key, _) = crate::runpod::creds_slot(&st, slot)?;

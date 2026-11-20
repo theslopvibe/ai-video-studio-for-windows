@@ -320,6 +320,9 @@ fn runpod_jobs(st: &AppState, running_only: bool) -> usize {
     }).unwrap_or(0)
 }
 
+/// Number of RunPod jobs that are not finished (queued or running). Used to warn before the app is closed.
+pub fn live_jobs(st: &AppState) -> usize { runpod_jobs(st, false) }
+
 /// Everything the UI, the chat and the MCP tools show about RunPod.
 pub async fn status(st: &AppState) -> Result<Value, String> {
     let slot = active_slot(st);
@@ -400,6 +403,51 @@ pub async fn sleep_on_exit(st: &AppState) {
         }
     })
     .await;
+}
+
+
+// ---- the voice endpoint (Voice Studio, text to speech) of an instance
+
+/// The worker script of the voice endpoint (it also ships in the repo as runpod/voicestudio/handler.py).
+const VOICE_HANDLER: &str = include_str!("../../../runpod/voicestudio/handler.py");
+const VOICE_IMAGE: &str = "ghcr.io/debpalash/voicestudio:0.5.7";
+
+/// Body that creates the voice endpoint: parked (no workers), A40 only so the voice always comes out the same,
+/// on the volume and in the data center of the instance's ComfyUI endpoint (`mounts` / `dataCenterIds` of that endpoint).
+pub fn voice_endpoint_body(comfy: &Value) -> Result<Value, String> {
+    use base64::Engine;
+    let volume = comfy["mounts"]["network"][0]["volumeId"].as_str().or_else(|| comfy["networkVolumes"][0].as_str())
+        .filter(|v| valid_id(v)).ok_or("This instance's ComfyUI endpoint has no network volume. Set the instance up first.")?;
+    let dcs: Vec<Value> = comfy["dataCenterIds"].as_array().cloned().unwrap_or_default();
+    let h = base64::engine::general_purpose::STANDARD.encode(VOICE_HANDLER);
+    Ok(json!({
+        "name": "aivs-voicestudio", "type": "QUEUE", "scaling": { "type": "REQUEST_COUNT", "requestCount": 1 },
+        "image": VOICE_IMAGE, "entrypoint": ["/bin/bash", "-c"],
+        "cmd": ["pip install -q runpod 2>&1 | tail -1; echo \"$VS_HANDLER_B64\" | base64 -d > /tmp/h.py; exec python3 -u /tmp/h.py"],
+        "env": { "VS_HANDLER_B64": h, "VS_DATA_DIR": "/runpod-volume/voicestudio", "VS_ACCEPT_LICENCES": "1" },
+        "disk": 30, "gpu": { "pools": ["AMPERE_48"], "excludedTypes": ["NVIDIA RTX A6000"], "count": 1, "minCudaVersion": "12.8" },
+        "dataCenterIds": dcs, "mounts": { "network": [{ "volumeId": volume }] },
+        "flashboot": "FLASHBOOT", "timeout": 1_800_000, "workers": { "min": 0, "max": 0 }
+    }))
+}
+
+/// Creates the voice endpoint in the account of instance `slot` (its own key, volume and data center) and saves its id.
+/// The models download on the first voice job (about 3 GB, a few minutes). The caller must have the user accept the model licences.
+pub async fn deploy_voice(st: &AppState, slot: u8, accept_licences: bool) -> Result<String, String> {
+    if !accept_licences {
+        return Err("Accept the model licences first: OmniVoice is CC-BY-NC (non-commercial use) and the Higgs Audio tokenizer has its own terms.".into());
+    }
+    if !tts_endpoint(st, slot).is_empty() {
+        return Err("This instance already has a voice endpoint.".into());
+    }
+    let (key, comfy_id) = creds_slot(st, slot)?;
+    let c = client()?;
+    let comfy = call(c.get(endpoint_url(&comfy_id)).bearer_auth(&key)).await?;
+    let body = voice_endpoint_body(&comfy)?;
+    let made = call(c.post(MGMT_BASE).bearer_auth(&key).json(&body)).await?;
+    let id = made["id"].as_str().filter(|i| valid_id(i)).ok_or("RunPod did not return the new endpoint id.")?.to_string();
+    st.db.kv_set(if slot == 2 { "runpod_tts_endpoint_id_2" } else { "runpod_tts_endpoint_id" }, &id).map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -507,5 +555,17 @@ mod tests {
         assert!(mgmt_err(403, &json!({})).contains("read and write"));
         assert!(mgmt_err(401, &json!({"error": "bad"})).contains("rejected"));
         assert!(mgmt_err(404, &json!({})).contains("endpoint id"));
+    }
+
+    #[test]
+    fn voice_endpoint_is_parked_on_the_comfy_volume() {
+        let comfy = json!({ "mounts": { "network": [{ "volumeId": "vol123" }] }, "dataCenterIds": ["EU-SE-1"] });
+        let b = voice_endpoint_body(&comfy).unwrap();
+        assert_eq!(b["workers"]["max"], 0);
+        assert_eq!(b["mounts"]["network"][0]["volumeId"], "vol123");
+        assert_eq!(b["dataCenterIds"][0], "EU-SE-1");
+        assert_eq!(b["gpu"]["pools"][0], "AMPERE_48");
+        assert!(b["env"]["VS_HANDLER_B64"].as_str().unwrap().len() > 1000);
+        assert!(voice_endpoint_body(&json!({})).is_err());
     }
 }
