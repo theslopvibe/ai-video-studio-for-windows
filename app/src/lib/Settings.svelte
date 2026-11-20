@@ -141,13 +141,13 @@
   }
   // ---- profile pack: voices + RunPod instances in one file
   const el = $derived(S.lang === "el");
-  let pkName = $state(""); let pkVoices = $state(true); let pkRunpod = $state(true); let pkKeys = $state(false); let pkPass = $state("");
+  let pkName = $state(""); let pkNotes = $state(""); let pkVoices = $state(true); let pkRunpod = $state(true); let pkKeys = $state(false); let pkPass = $state("");
   let pkFile = $state(""); let pkPrev = $state<PackPreview | null>(null);
   let inVoices = $state(true); let inRunpod = $state(true); let inKeys = $state(true); let inActive = $state(true); let inPass = $state("");
   async function packExport() {
     const p = await saveDialog({ defaultPath: (pkName.trim() || "profile") + ".aivs-profile.json", filters: [{ name: "JSON", extensions: ["json"] }] });
     if (!p) return;
-    const r = await S.run(() => api.profileExport(p, pkName, pkVoices, pkRunpod, pkKeys, pkPass));
+    const r = await S.run(() => api.profileExport(p, pkName, pkNotes, pkVoices, pkRunpod, pkKeys, pkPass));
     if (r) { pkPass = ""; S.notify(el ? `Αποθηκεύτηκε: ${r.voices} φωνές, ${r.runpod} instances${r.keys ? ", με κλειδιά (κρυπτογραφημένα)" : ""}` : `Saved: ${r.voices} voices, ${r.runpod} instances${r.keys ? ", keys encrypted" : ""}`); }
   }
   async function packPick() {
@@ -380,6 +380,7 @@
       : "One file the team shares: the voices (e.g. Vasilis, with the settings that keep them identical) and the RunPod instances. The RunPod key is only included encrypted with a password."}</p>
     <h3>{el ? "Δημιουργία πακέτου" : "Create a pack"}</h3>
     <input bind:value={pkName} placeholder={el ? "Όνομα πακέτου" : "Pack name"} />
+    <textarea rows="3" bind:value={pkNotes} placeholder={el ? "Οδηγίες για όποιον το φορτώνει (προαιρετικό)" : "Instructions for whoever loads it (optional)"}></textarea>
     <label class="row"><input type="checkbox" bind:checked={pkVoices} /> {el ? "Φωνές" : "Voices"}</label>
     <label class="row"><input type="checkbox" bind:checked={pkRunpod} /> {el ? "RunPod instances" : "RunPod instances"}</label>
     <label class="row"><input type="checkbox" bind:checked={pkKeys} disabled={!pkRunpod} /> {el ? "Και τα κλειδιά RunPod (κρυπτογραφημένα)" : "Also the RunPod keys (encrypted)"}</label>
@@ -389,6 +390,7 @@
     <div class="row"><button onclick={packPick}>{el ? "Επιλογή αρχείου…" : "Choose file…"}</button></div>
     {#if pkPrev}
       <p><b>{pkPrev.name || (el ? "Πακέτο χωρίς όνομα" : "Unnamed pack")}</b></p>
+      {#if pkPrev.notes}<p class="small" style="white-space:pre-wrap">{pkPrev.notes}</p>{/if}
       {#if pkPrev.voices.length}
         <label class="row"><input type="checkbox" bind:checked={inVoices} /> {el ? "Φωνές" : "Voices"}: {pkPrev.voices.map((v) => v.name + (v.replaces ? (el ? " (αντικαθιστά)" : " (replaces)") : "")).join(", ")}</label>
       {/if}
@@ -447,7 +449,7 @@
 
   <div class="card">
     <h2>{ct(S.lang, "about_title")}</h2>
-    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.9.9" : ""}</p>
+    <p>{ct(S.lang, "about_text")} <a href="https://theslopvibe.com" target="_blank" rel="noreferrer">theslopvibe.com</a>. v{S.boot ? "0.10.0" : ""}</p>
     <p class="small dim">{S.lang === "el"
       ? "Ο ενσωματωμένος editor video είναι το OpenCut (ανοιχτός κώδικας, άδεια MIT, από τους συνεργάτες του OpenCut). Δεν είναι δικό μας έργο· το πακετάρουμε χωρίς αλλαγές στη λειτουργία του. Ο editor εικόνας είναι το miniPaint (MIT, ViliusL), με δικό μας μενού AI."
       : "The built-in video editor is OpenCut (open source, MIT license, by the OpenCut contributors). It is not our work; we bundle it with no change to how it works. The image editor is miniPaint (MIT, by ViliusL) with our own AI menu."}

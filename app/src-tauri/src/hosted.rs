@@ -222,13 +222,39 @@ pub fn runpod_body(graph: &Value) -> Value {
                 node["inputs"] = json!({ "image": name });
                 images.push(json!({ "name": name, "image": d }));
             }
+            // a voice recording travels the same way (the worker saves any uploaded bytes under the given name) and is read by the native LoadAudio
+            if node["class_type"].as_str() == Some("AIVSLoadAudioBase64") {
+                if let Some(d) = node["inputs"]["audio_b64"].as_str().filter(|d| !d.is_empty()).map(String::from) {
+                    let name = format!("aivs_input_{}.{}", images.len() + 1, audio_ext(&d));
+                    node["class_type"] = json!("LoadAudio");
+                    node["inputs"] = json!({ "audio": name });
+                    images.push(json!({ "name": name, "image": d }));
+                }
+            }
         }
     }
     let mut input = json!({ "workflow": g });
     if !images.is_empty() {
         input["images"] = Value::Array(images);
     }
-    json!({ "input": input, "policy": { "executionTimeout": 1_200_000 } })
+    // a talking avatar needs minutes per 3 seconds of video: allow 3 hours instead of 20 minutes
+    let slow = g.as_object().is_some_and(|o| o.values().any(|n| n["class_type"].as_str() == Some("WanInfiniteTalkToVideo")));
+    json!({ "input": input, "policy": { "executionTimeout": if slow { 10_800_000 } else { 1_200_000 } } })
+}
+
+/// File extension of a base64 sound file, from its first bytes (the worker needs a name ComfyUI can open).
+fn audio_ext(b64: &str) -> &'static str {
+    use base64::Engine;
+    let data = b64.split_once("base64,").map(|(_, d)| d).unwrap_or(b64);
+    let head: String = data.chars().filter(|c| !c.is_whitespace()).take(16).collect();
+    let b = base64::engine::general_purpose::STANDARD_NO_PAD.decode(head.trim_end_matches('=')).unwrap_or_default();
+    match b.as_slice() {
+        [b'R', b'I', b'F', b'F', ..] => "wav",
+        [b'I', b'D', b'3', ..] | [0xFF, 0xFB, ..] | [0xFF, 0xF3, ..] | [0xFF, 0xF2, ..] => "mp3",
+        [b'f', b'L', b'a', b'C', ..] => "flac",
+        [b'O', b'g', b'g', b'S', ..] => "ogg",
+        _ => "wav",
+    }
 }
 
 /// File bytes and extension from a COMPLETED RunPod status (`output.images[]`, base64 data, ext from the file name).
@@ -305,14 +331,16 @@ pub async fn run_runpod(endpoint: &str, key: &str, graph: &Value, dph: f64, canc
     };
     let job = sub["id"].as_str().ok_or("RunPod returned no job id")?.to_string();
     let mut failures = 0;
+    // waiting time (cold start included): 30 minutes, or 3 hours + start for a talking avatar
+    let limit_min: u64 = if body["policy"]["executionTimeout"].as_u64().unwrap_or(0) > 1_200_000 { 200 } else { 30 };
     loop {
         if let Err(e) = wait(cancel, tick, t0, 2).await {
             let _ = c.post(format!("{RUNPOD_API}/{endpoint}/cancel/{job}")).header("Authorization", &auth).send().await;
             return Err(e);
         }
-        if t0.elapsed() > Duration::from_secs(30 * 60) {
+        if t0.elapsed() > Duration::from_secs(limit_min * 60) {
             let _ = c.post(format!("{RUNPOD_API}/{endpoint}/cancel/{job}")).header("Authorization", &auth).send().await;
-            return Err("RunPod took longer than 30 minutes.".into());
+            return Err(format!("RunPod took longer than {limit_min} minutes."));
         }
         let s = match rp_json(c.get(format!("{RUNPOD_API}/{endpoint}/status/{job}")).header("Authorization", &auth)).await {
             Ok(s) => { failures = 0; s }
@@ -327,7 +355,7 @@ pub async fn run_runpod(endpoint: &str, key: &str, graph: &Value, dph: f64, canc
             }
             "FAILED" => return Err(runpod_err(&s)),
             "CANCELLED" => return Err("RunPod: the job was cancelled.".into()),
-            "TIMED_OUT" => return Err("RunPod: the job timed out on the worker (20 minute limit).".into()),
+            "TIMED_OUT" => return Err("RunPod: the job timed out on the worker.".into()),
             _ => {}
         }
     }
@@ -422,6 +450,20 @@ mod tests {
         assert_eq!(imgs[0], json!({"name": "aivs_input_1.png", "image": "QUJD"}));
         assert_eq!(b["policy"]["executionTimeout"], 1_200_000);
         assert!(runpod_body(&json!({"1": {"class_type": "KSampler", "inputs": {}}}))["input"].get("images").is_none());
+    }
+
+    #[test]
+    fn runpod_body_carries_a_voice_recording_as_a_file() {
+        let g = json!({
+            "1": {"class_type": "AIVSLoadImageBase64", "inputs": {"image_b64": "QUJD"}},
+            "2": {"class_type": "AIVSLoadAudioBase64", "inputs": {"audio_b64": "UklGRgAAAAA="}},
+            "3": {"class_type": "WanInfiniteTalkToVideo", "inputs": {}}
+        });
+        let b = runpod_body(&g);
+        assert_eq!(b["input"]["workflow"]["2"]["class_type"], "LoadAudio");
+        assert_eq!(b["input"]["workflow"]["2"]["inputs"]["audio"], "aivs_input_2.wav");
+        assert_eq!(b["input"]["images"][1]["name"], "aivs_input_2.wav");
+        assert_eq!(b["policy"]["executionTimeout"], 10_800_000);
     }
 
     #[test]

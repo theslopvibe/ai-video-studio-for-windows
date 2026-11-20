@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0
+
+- **Talking avatar (HeyGen style).** New mode "Photo + Voice → Talking avatar (InfiniteTalk 480p)": a photo of a person plus a voice recording of any length becomes a video where they speak. On RunPod it runs on your own endpoint (the models go on the same network volume as Wan; the endpoint is parked between videos). A 5 second test took 18 minutes including the first start, about 0.1-0.5 USD. Claude and GLM have a one-step tool, `avatar_video` (voice by name, photo, script). The RunPod job body now carries the voice recording, and the avatar may take up to 3 hours.
+- **Saved voices.** `voice_save` / `voice_list` / `voice_delete` keep a named voice (a short sample with its exact transcript, speed, seed, accent) so a voice comes out the same every time. A new mode "Text → Voice in a saved voice" speaks with it: with Voice Studio on your PC (free) or, when it is not there, on a RunPod voice endpoint (same Voice Studio backend, parked between uses). The models need their licences accepted by the account owner (OmniVoice is CC-BY-NC: non-commercial).
+- **Profile pack.** Settings has a new "Profile pack" card: one file with the saved voices, the RunPod instances (endpoint ids, which one is active) and optional instructions. The RunPod key can be included only encrypted with a password (AES-256-GCM). Loading shows a preview and asks which parts to load; it can only be done from the app window, never from Claude or a settings file.
+- The in-app chat knows the saved voices and how to chain voice + avatar. MCP package 0.7.0.
+- RunPod: ComfyUI is started with `--cache-none` so long videos do not run out of memory.
+
 ## 0.9.9
 
 - Security hardening. A result file is downloaded from the exact address that was checked, and every redirect is checked again. More private and reserved addresses are blocked. A settings file can no longer change the RunPod sleep time, spend cap or price. The uninstaller now also removes the saved RunPod keys when you choose to delete the data.

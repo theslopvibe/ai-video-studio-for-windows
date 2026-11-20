@@ -244,7 +244,7 @@ async function handle(msg) {
         result: {
           protocolVersion: params?.protocolVersion || "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "ai-video-studio", version: "0.6.0" },
+          serverInfo: { name: "ai-video-studio", version: "0.7.0" },
           instructions: INSTRUCTIONS,
         },
       });

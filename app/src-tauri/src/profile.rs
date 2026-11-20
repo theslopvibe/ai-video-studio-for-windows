@@ -39,14 +39,16 @@ fn open_sealed(password: &str, s: &Value) -> Result<Vec<u8>, String> {
 }
 
 fn clean_id(s: &str) -> String { s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(64).collect() }
+/// Instructions for whoever loads the pack: plain text, shown in the preview and never run or sent to a model.
+fn clean_notes(s: &str) -> String { s.chars().filter(|c| !c.is_control() || *c == '\n').take(2000).collect::<String>().trim().to_string() }
 fn clean_name(s: &str) -> String { s.chars().filter(|c| !c.is_control()).take(40).collect::<String>().trim().to_string() }
 
-pub struct Export<'a> { pub name: &'a str, pub voices: bool, pub runpod: bool, pub keys: bool, pub password: &'a str }
+pub struct Export<'a> { pub name: &'a str, pub notes: &'a str, pub voices: bool, pub runpod: bool, pub keys: bool, pub password: &'a str }
 
 /// Writes a pack. The keys are only included with a password of 8+ characters.
 pub fn export(st: &AppState, path: &str, o: &Export) -> Result<Value, String> {
     if o.keys && o.password.chars().count() < 8 { return Err("Choose a password of at least 8 characters to protect the RunPod keys.".into()); }
-    let mut pack = json!({ "format": FORMAT, "version": 1, "name": clean_name(o.name) });
+    let mut pack = json!({ "format": FORMAT, "version": 1, "name": clean_name(o.name), "notes": clean_notes(o.notes) });
     if o.voices {
         let vs: Vec<Value> = crate::voices::export_all(st, &[]).into_iter().map(|(n, ext, v, bytes)| json!({
             "name": n, "ext": ext, "speed": v["speed"], "seed": v["seed"], "language": v["language"], "instruct": v["instruct"], "ref_text": v["ref_text"], "profile_id": v["profile_id"],
@@ -92,7 +94,7 @@ pub fn preview(st: &AppState, path: &str) -> Result<Value, String> {
         let ep = SLOTS.iter().find(|k| k.0 == slot).map(|k| k.2).unwrap_or("runpod_endpoint_id");
         json!({ "slot": slot, "name": r["name"], "endpoint_id": r["endpoint_id"], "current_endpoint": st.db.kv_get(ep).unwrap_or_default() })
     }).collect();
-    Ok(json!({ "name": p["name"], "voices": voices, "runpod": runpod, "active": p["runpod_active"], "has_keys": p["secrets"].is_object() }))
+    Ok(json!({ "name": p["name"], "notes": clean_notes(p["notes"].as_str().unwrap_or("")), "voices": voices, "runpod": runpod, "active": p["runpod_active"], "has_keys": p["secrets"].is_object() }))
 }
 
 pub struct Apply<'a> { pub voices: bool, pub runpod: bool, pub keys: bool, pub make_active: bool, pub password: &'a str }

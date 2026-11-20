@@ -64,8 +64,61 @@ def accept_licences(detail):
         print("licence", m["repo_id"], s, flush=True)
 
 
+def volume_ops(i):
+    """Maintenance jobs on the network volume (no GPU work): {"op":"ls"} shows what is on it, {"op":"download","files":[{"dir","url"}]}
+    fetches model files into /runpod-volume/ComfyUI/models/<dir> (skips complete files, resumes .part files)."""
+    import shutil, threading
+    base = "/runpod-volume/ComfyUI/models"
+    if i["op"] == "ls":
+        tot, used, free = shutil.disk_usage("/runpod-volume")
+        files = []
+        for root, _, names in os.walk("/runpod-volume"):
+            for n in names:
+                p = os.path.join(root, n)
+                try:
+                    files.append((os.path.getsize(p), p))
+                except OSError:
+                    pass
+        files.sort(reverse=True)
+        return {"disk_gb": [round(tot / 1e9, 1), round(used / 1e9, 1), round(free / 1e9, 1)], "files": [[p, round(sz / 1e9, 2)] for sz, p in files[:200]]}
+    res, lock = {}, threading.Lock()
+
+    def get(d, url):
+        name = url.rsplit("/", 1)[1]
+        os.makedirs(f"{base}/{d}", exist_ok=True)
+        final, part = f"{base}/{d}/{name}", f"{base}/{d}/{name}.part"
+        try:
+            if os.path.exists(final) and os.path.getsize(final) > 1_000_000:
+                out = ["have", os.path.getsize(final)]
+            else:
+                done = os.path.getsize(part) if os.path.exists(part) else 0
+                req = urllib.request.Request(url, headers={"Range": f"bytes={done}-"} if done else {})
+                with urllib.request.urlopen(req, timeout=120) as r, open(part, "ab" if done else "wb") as f:
+                    total = done + int(r.headers.get("Content-Length", 0))
+                    while True:
+                        b = r.read(8 << 20)
+                        if not b:
+                            break
+                        f.write(b)
+                if total and os.path.getsize(part) != total:
+                    raise RuntimeError(f"size {os.path.getsize(part)} != {total}")
+                os.replace(part, final)
+                out = ["done", os.path.getsize(final)]
+        except Exception as e:
+            out = ["FAILED", str(e)]
+        with lock:
+            res[f"{d}/{name}"] = out
+
+    ts = [threading.Thread(target=get, args=(f["dir"], f["url"])) for f in i.get("files", []) if str(f.get("url", "")).startswith("https://huggingface.co/")]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    return {"files": res}
+
+
 def handler(job):
     i = job["input"]
+    if i.get("op") in ("ls", "download"):
+        return volume_ops(i)
     text = str(i.get("text", "")).strip()
     ref = i.get("ref_audio_b64")
     if not text or not ref:

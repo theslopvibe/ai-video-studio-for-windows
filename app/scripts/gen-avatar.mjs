@@ -50,4 +50,10 @@ for (const [p, s] of Object.entries(sizes)) {
     save: { class_type: "SaveVideo", inputs: { video: ["video", 0], filename_prefix: "video/avatar", format: "mp4", codec: "auto" } },
   };
   out(`avatar-infinitetalk-${p}.json`, { meta, workflow: wf });
+  if (p == 480) {
+    // RunPod twin: same graph; the app turns the inline photo/voice nodes into LoadImage/LoadAudio files for the worker
+    const twin = { ...meta, id: "runpod-avatar-infinitetalk-480", name_en: "RunPod · " + meta.name_en.replace(", experimental", ""), name_el: "RunPod · " + meta.name_el.replace(", πειραματικό", ""),
+      models: [], pack: "", vram_gb: 48, est_sec: 600, est_usd: 0.15, priority: 165, provider: "runpod", model: "", request: {}, license: "paid" };
+    out("runpod-avatar-infinitetalk-480.json", { meta: twin, workflow: wf });
+  }
 }

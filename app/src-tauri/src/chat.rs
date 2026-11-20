@@ -479,6 +479,12 @@ pub fn studio_system(st: &AppState) -> String {
         cat.push_str(&format!("- {} | {} | {} | {} | good for: {} | params: {} | inputs: {}{}
 ", plain(&m.id), plain(&m.name_en), plain(&m.kind), cost, plain(&m.good_en), plain(&keys.join(",")), if needs.is_empty() { "none".into() } else { plain(&needs.join(",")) }, plain(&langs)));
     }
+    // saved voices and the talking-avatar chain (the voice names are the user's own, one short word each)
+    let voices: Vec<String> = crate::voices::list(st).iter().filter_map(|v| v["name"].as_str().map(plain)).collect();
+    if !voices.is_empty() {
+        cat.push_str(&format!("Saved voices (use as params {{\"voice\":\"<name>\"}} of voicestudio-tts): {}. Talking avatar video (a person speaks the script): block \"a\" = voicestudio-tts with the script as prompt and the saved voice; block \"b\" = the avatar mode (avatar-infinitetalk-480 or its RunPod version) with inputs {{\"audio\":\"@a\"}}; the photo of the person is asked from the user on the card; the length is taken from the speech. It is slow and costs real money, so say the price and that it takes minutes.
+", voices.join(", ")));
+    }
     format!(
         "You are the assistant inside AI Video Studio, an app that makes videos and images from prompts. Reply in the user's language, briefly. Ask at most one short question and only if essential. Recommend a model for the task (one line: why, speed, price). Write the prompt in English: subject, one action, setting, light, camera, style, one continuous shot.
 To queue a result add one block per clip, exactly:

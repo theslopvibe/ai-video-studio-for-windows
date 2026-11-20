@@ -1088,8 +1088,8 @@ fn import_settings(st: State<AppState>, path: String) -> R<()> {
 // ---- profile packs (voices + RunPod instances shared as one file; only reachable from the app window)
 
 #[tauri::command]
-fn profile_export(st: State<AppState>, path: String, name: String, voices: bool, runpod: bool, keys: bool, password: String) -> R<Value> {
-    profile::export(&st, &path, &profile::Export { name: &name, voices, runpod, keys, password: &password })
+fn profile_export(st: State<AppState>, path: String, name: String, notes: String, voices: bool, runpod: bool, keys: bool, password: String) -> R<Value> {
+    profile::export(&st, &path, &profile::Export { name: &name, notes: &notes, voices, runpod, keys, password: &password })
 }
 
 #[tauri::command]
